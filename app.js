@@ -1,4 +1,5 @@
 import {matchingQuestions, normalizeQuestion} from './matching.js';
+import {techniques, questionHints} from './techniques.js';
 const main=document.querySelector('main'), dialog=document.querySelector('dialog');
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon=name=>`<i data-lucide="${name}"></i>`;
@@ -22,6 +23,23 @@ function updateCount(){document.querySelector('#saved-count').textContent=Object
 function head(kicker,title,desc,right=''){return `<div class="page-head"><div><div class="eyebrow">${kicker}</div><h1>${title}</h1><p class="lead">${desc}</p></div>${right}</div>`;}
 function segment(items,current,action){return `<div class="segmented">${items.map(([v,l])=>`<button data-action="${action}" data-value="${v}" aria-pressed="${v===current}">${l}</button>`).join('')}</div>`;}
 function empty(title,text,action=''){return `<div class="empty">${icon('notebook-pen')}<h2>${title}</h2><p>${text}</p>${action}</div>`;}
+function techniqueCopy(t){
+  return `<p class="tech-recognize">${esc(t.recognize)}</p><h4>解題步驟</h4><ol>${t.steps.map(s=>`<li>${esc(s)}</li>`).join('')}</ol><p class="tech-caution"><strong>容易失分</strong>${esc(t.mistake)}</p><h4>小例子</h4><p class="tech-example">${esc(t.example)}</p>`;
+}
+function station(topics,scope){
+  const options=techniques.map((t,i)=>({...t,i})).filter(t=>topics.includes(t.topic));
+  if(!options.length)return '';
+  const selected=scope==='viewer'&&options.some(t=>t.i===viewer.method)?viewer.method:options[0].i;
+  return `<details class="technique-station" data-station="${scope}" ${scope==='viewer'&&viewer.stationOpen?'open':''}><summary>${icon('lightbulb')}<span>題型技巧站<small>辨認特徵 · 解題步驟 · 易錯位</small></span>${icon('chevron-down')}</summary><div class="station-content"><label class="field" for="technique-${scope}">課題與方法<select id="technique-${scope}" data-technique="${scope}">${options.map(t=>`<option value="${t.i}" ${selected===t.i?'selected':''}>${esc(t.topic)} · ${esc(t.title)}</option>`).join('')}</select></label><p class="tech-scope">共用方法參考；先核對題目條件，不代表每題都適用。</p><div class="technique-copy">${techniqueCopy(techniques[selected])}</div></div></details>`;
+}
+function hintContent(q){
+  const hints=questionHints[key(q)],count=viewer.hints[key(q)]||0;
+  return `<div class="hint-copy" aria-live="polite">${hints.slice(0,count).map((text,i)=>`<p><strong>${['觀察重點','第一步','關鍵檢查'][i]}</strong>${esc(text)}</p>`).join('')}</div>${count<hints.length?`<button class="text-button" data-action="reveal-hint" data-id="${esc(key(q))}">${icon('eye')}提示 ${count+1}</button>`:''}${count?`<button class="icon-button" data-action="reset-hints" data-id="${esc(key(q))}" aria-label="收起 Q${esc(q.q)} 的提示" data-tip="收起提示">${icon('rotate-ccw')}</button>`:''}`;
+}
+function hintsPanel(q){
+  const parts=q.parts||[q],available=parts.filter(p=>questionHints[key(p)]);
+  return `<section class="question-hints" aria-label="本題提示"><h3>${icon('signpost')}本題提示</h3>${available.length?available.map(p=>`<div class="hint-part" data-hint-id="${esc(key(p))}"><h4>Q${esc(p.q)}</h4><div class="hint-content">${hintContent(p)}</div></div>`).join(''):'<p class="tech-scope">本題尚未加入已核對原卷的專屬提示，可先參考下方共用技巧。</p>'}${available.length&&available.length<parts.length?'<p class="tech-scope">其餘分題的專屬提示尚待核對。</p>':''}${available.length?'<p class="tech-scope">按原卷編寫的操練提示，非官方評分準則。</p>':''}</section>`;
+}
 function pool(){return state.level==='whole'?data.groups:data.questions;}
 function getQuestion(id,whole=false){return (whole?data.groups:data.questions).find(q=>key(q)===id)||data.groups.find(q=>key(q)===id);}
 function pager(total,page,action){const n=Math.ceil(total/6);return n>1?`<div class="pager"><button class="icon-button" data-action="${action}" data-value="${page-1}" ${page===1?'disabled':''} aria-label="上一頁">${icon('chevron-left')}</button><span>第 ${page} / ${n} 頁</span><button class="icon-button" data-action="${action}" data-value="${page+1}" ${page===n?'disabled':''} aria-label="下一頁">${icon('chevron-right')}</button></div>`:'';}
@@ -57,6 +75,7 @@ function drawResults(){
   target.innerHTML=`<section class="current-question"><div><div class="current-label">正在配對的題目</div><div class="q-title">${yearName(q.year)} Q${esc(q.q)}<span class="section-tag">${sectionName[q.section]} · 大題 ${q.parentMarks} 分</span></div>
   <p class="q-summary">${esc(q.summary)}</p><div class="tags" aria-label="配對課題">${q.topics.map(t=>`<button class="topic-toggle" data-action="toggle-topic" data-value="${esc(t)}" aria-pressed="${state.selected.includes(t)}">${icon(state.selected.includes(t)?'check':'plus')}${esc(t)}</button>`).join('')}</div></div>
   <button class="paper-thumb" data-action="open" data-id="${esc(key(q))}" data-whole="${Boolean(q.parts)}" aria-label="查看 ${yearName(q.year)} Q${esc(q.q)} 原卷"><img src="pages/${q.year}/${q.page||1}.jpg" alt="${yearName(q.year)} 原卷頁面"><span>${icon('expand')}查看原卷</span></button></section>
+  ${station(q.topics,'find')}
   <div class="section-heading"><h2>其他年份的同類題<span class="count">${results.length} 題</span></h2><span class="hint">優先顯示課題完全相同的題目</span></div>
   <div class="filters">${segment([['all','包含全部課題'],['exact','課題完全相同'],['any','任一相同課題']],state.match,'match')}
   <select id="section-filter" aria-label="篩選試卷部分"><option value="all">所有部分</option>${Object.entries(sectionName).map(([v,l])=>`<option value="${v}" ${state.section===v?'selected':''}>${l}</option>`).join('')}</select>
@@ -103,7 +122,7 @@ function drawTopicExamples(){
   if(!state.topicDetail){el.innerHTML='';return;}
   const s=data.stats.find(s=>s.topic===state.topicDetail);
   const qs=data.groups.filter(q=>q.year!=='PP'&&q.topics.includes(s.topic)&&(state.topicSection==='all'||q.section===state.topicSection)).sort((a,b)=>yearSort(a.year,b.year)||a.parent-b.parent).slice(0,6);
-  el.innerHTML=`<section class="topic-examples"><div class="section-heading"><div><h2>${esc(s.topic)}</h2><p class="hint">正式卷 ${s.count} 題 · ${s.years}/15 年出現 · PP ${s.pp} 題</p></div><button class="icon-button" data-action="close-topic" aria-label="收起課題例子">${icon('x')}</button></div>${qs.length?`<div class="result-grid">${qs.map(q=>card(q,{match:false})).join('')}</div>`:empty('這個部分未有記錄','此統計不代表該課題不屬現行考試範圍。')}</section>`;
+  el.innerHTML=`<section class="topic-examples"><div class="section-heading"><div><h2>${esc(s.topic)}</h2><p class="hint">正式卷 ${s.count} 題 · ${s.years}/15 年出現 · PP ${s.pp} 題</p></div><button class="icon-button" data-action="close-topic" aria-label="收起課題例子">${icon('x')}</button></div>${station([s.topic],'topics')}${qs.length?`<div class="result-grid">${qs.map(q=>card(q,{match:false})).join('')}</div>`:empty('這個部分未有記錄','此統計不代表該課題不屬現行考試範圍。')}</section>`;
   icons();
 }
 const foundation=[
@@ -159,7 +178,7 @@ function render(){
 }
 function openPaper(q){
   lastFocus=document.activeElement;
-  viewer={q,page:q.page||1,zoom:1};
+  viewer={q,page:q.page||1,zoom:1,hints:{},stationOpen:false,method:null};
   drawViewer();
   if(!dialog.open)dialog.showModal();
   dialog.querySelector('[data-action="close"]')?.focus();
@@ -172,6 +191,7 @@ function drawViewer(){
   <div class="page-controls"><button class="icon-button" data-action="paper-page" data-value="${page-1}" ${page===1?'disabled':''} aria-label="原卷上一頁">${icon('chevron-left')}</button><select id="paper-page" aria-label="原卷頁數">${Array.from({length:paper.pages},(_,i)=>`<option value="${i+1}" ${page===i+1?'selected':''}>第 ${i+1} / ${paper.pages} 頁</option>`).join('')}</select><button class="icon-button" data-action="paper-page" data-value="${page+1}" ${page===paper.pages?'disabled':''} aria-label="原卷下一頁">${icon('chevron-right')}</button></div>
   ${!q.page?`<p class="note">${icon('info')}這份原卷尚未定位題號，請用頁數選單尋找 Q${esc(q.q)}。</p>`:`<p class="note">${icon('info')}已定位大題起始頁；題目可能延續至下一頁。</p>`}
   <h3>題目摘要</h3><p class="detail-copy">${esc(q.summary)}</p><div class="tags">${q.topics.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
+  ${hintsPanel(q)}${station(q.topics,'viewer')}
   <button class="primary" data-action="viewer-done">${icon(isDone(q)?'circle-check':'check')} ${isDone(q)?'已完成 · 改回待完成':'標記已完成'}</button>
   <button class="secondary" data-action="viewer-save">${icon('bookmark')} ${isSaved(q)?'取消收藏':'加入我的操練'}</button>
   <a class="secondary" href="${paper.url}#page=${page}" target="_blank" rel="noopener">${icon('external-link')}開啟原卷 PDF</a>
@@ -189,6 +209,14 @@ document.addEventListener('click',e=>{
   else if(a==='open')openPaper(getQuestion(b.dataset.id,b.dataset.whole==='true'));
   else if(a==='save'){save(getQuestion(b.dataset.id,b.dataset.whole==='true'));refreshCards();}
   else if(a==='close')dialog.close();
+  else if(a==='reveal-hint'||a==='reset-hints'){
+    const id=b.dataset.id,q=(viewer.q.parts||[viewer.q]).find(p=>key(p)===id);
+    if(!q||!questionHints[id])return;
+    viewer.hints[id]=a==='reset-hints'?0:Math.min(3,(viewer.hints[id]||0)+1);
+    const el=b.closest('.hint-content');
+    el.innerHTML=hintContent(q);
+    el.querySelector('button')?.focus();
+  }
   else if(a==='paper-page'){viewer.page=Number(v);drawViewer();}
   else if(a==='zoom'){viewer.zoom=Math.max(1,Math.min(3,viewer.zoom+Number(v)));drawViewer();}
   else if(a==='zoom-fit'){viewer.zoom=1;drawViewer();}
@@ -206,11 +234,20 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('submit',e=>{if(e.target.id==='search-form'){e.preventDefault();runSearch(e.target.question.value,e.target.year.value);}});
 document.addEventListener('change',e=>{
+  if(e.target.dataset.technique){
+    const t=techniques[Number(e.target.value)];
+    if(!t)return;
+    if(e.target.dataset.technique==='viewer')viewer.method=Number(e.target.value);
+    e.target.closest('.technique-station').querySelector('.technique-copy').innerHTML=techniqueCopy(t);
+  }
   if(e.target.id==='year'){state.year=e.target.value;document.querySelector('#question-options').innerHTML=pool().filter(q=>q.year===state.year).map(q=>`<option value="${esc(q.q)}">${sectionName[q.section]}</option>`).join('');}
   if(e.target.id==='section-filter'){state.section=e.target.value;state.page=1;drawResults();}
   if(e.target.id==='pp-filter'){state.pp=e.target.checked;state.page=1;drawResults();}
   if(e.target.id==='paper-page'){viewer.page=Number(e.target.value);drawViewer();}
 });
+dialog.addEventListener('toggle',e=>{
+  if(viewer&&e.target.dataset.station==='viewer')viewer.stationOpen=e.target.open;
+},true);
 document.addEventListener('input',e=>{if(e.target.id==='topic-search'){state.topicSearch=e.target.value;state.topicPage=1;drawChart();}});
 dialog.addEventListener('close',()=>{viewer=null;lastFocus?.isConnected&&lastFocus.focus();});
 dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});

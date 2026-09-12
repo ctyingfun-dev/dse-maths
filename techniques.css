@@ -1,0 +1,40 @@
+.technique-station{border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:0 0 26px;background:#f0f6f4}
+.technique-station summary{display:flex;align-items:center;gap:12px;padding:16px 18px;cursor:pointer;list-style:none;color:var(--green);font-weight:700}
+.technique-station summary::-webkit-details-marker{display:none}
+.technique-station summary>svg:last-child{margin-left:auto;transition:transform .15s}
+.technique-station[open] summary>svg:last-child{transform:rotate(180deg)}
+.technique-station summary small{display:block;font-size:11px;font-weight:400;color:var(--muted);margin-top:2px}
+.technique-station summary:focus-visible{outline:3px solid #dfac33;outline-offset:-3px}
+.station-content{padding:0 18px 20px;max-width:760px}
+.station-content select{max-width:100%;width:100%;min-width:0;white-space:normal}
+.technique-copy{font-size:14px;overflow-wrap:anywhere}
+.technique-copy h4,.hint-part h4{font-size:12px;color:#52645b;margin:18px 0 7px}
+.technique-copy ol{padding-left:23px;margin:0 0 15px}
+.technique-copy li{padding:3px 0 3px 4px}
+.tech-scope{font-size:11px;color:var(--muted);margin:10px 0 14px;line-height:1.7}
+.tech-recognize{border-left:3px solid var(--green);padding-left:12px;margin-top:18px}
+.tech-caution{border-left:3px solid #dc9664;padding:8px 12px;background:#fff9ee}
+.tech-caution strong,.hint-copy strong{display:block;font-size:12px;margin-bottom:4px}
+.tech-example{font-family:system-local,"Segoe UI",sans-serif;line-height:1.9}
+.question-hints{border-top:1px solid var(--line);padding-top:16px;margin-top:18px;margin-bottom:20px}
+.question-hints h3{display:flex!important;align-items:center;gap:8px;font-size:15px}
+.hint-part+.hint-part{border-top:1px solid var(--line);margin-top:12px}
+.hint-part h4{margin:12px 0 7px}
+.hint-copy{font-size:13px;line-height:1.8;overflow-wrap:anywhere}
+.hint-copy p{padding:8px 0}
+.hint-copy strong{color:var(--green)}
+.hint-content .text-button{font-size:12px;padding:8px 0;display:inline-flex;align-items:center;gap:7px}
+.hint-content .icon-button{margin-left:8px;vertical-align:middle}
+.viewer-aside .technique-station{margin-bottom:18px}
+.viewer-aside .technique-station summary{padding:12px 10px;gap:8px;font-size:14px}
+.viewer-aside .station-content{padding:0 10px 15px}
+.viewer-aside .technique-copy{font-size:13px}
+.viewer-aside .station-content .field{font-size:11px}
+.viewer-aside .station-content select{font-size:12px}
+@media(max-width:700px){
+  .technique-station summary{padding:13px 12px;font-size:14px}
+  .station-content{padding:0 12px 17px}
+  .technique-copy{font-size:13px}
+  .viewer-aside:has(.hint-copy p),.viewer-aside:has(.technique-station[open]){max-height:52dvh}
+  .viewer-aside .question-hints h3{display:flex!important}
+}
