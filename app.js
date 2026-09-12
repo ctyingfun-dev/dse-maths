@@ -1,15 +1,20 @@
 import {matchingQuestions, normalizeQuestion} from './matching.js';
-import {techniques, questionHints} from './techniques.js';
+import {techniques, questionHints, questionSubtopics, reviewedSummaries} from './techniques.js';
 const main=document.querySelector('main'), dialog=document.querySelector('dialog');
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon=name=>`<i data-lucide="${name}"></i>`;
 const sectionName={A1:'甲一',A2:'甲二',B:'乙部'};
 const yearName=y=>y==='PP'?'PP 練習卷':`${y} DSE`;
 const key=q=>`${q.year}:${q.q}`;
+function summaryOf(q){
+  if(reviewedSummaries[key(q)])return reviewedSummaries[key(q)].text;
+  if(q.parts?.some(p=>reviewedSummaries[key(p)]))return q.parts.map(summaryOf).join('；');
+  return q.summary;
+}
 const yearSort=(a,b)=>(Number(b)||0)-(Number(a)||0);
 let data, stored={}, memoryOnly=false;
 try{stored=JSON.parse(localStorage.getItem('dse-practice-v1')||'{}');if(!stored||Array.isArray(stored)||typeof stored!=='object')stored={};stored=Object.fromEntries(Object.entries(stored).filter(([,v])=>v&&typeof v==='object'));}catch{memoryOnly=true;}
-let state={route:'find',level:'part',year:'2026',q:'4(b)',source:null,selected:[],match:'all',section:'all',pp:false,page:1,
+let state={route:'find',level:'whole',year:'2026',q:'4',source:null,selected:[],match:'all',section:'all',pp:false,page:1,
   topicSection:'all',topicSearch:'',topicPage:1,topicDetail:null,guide:'foundation',savedFilter:'all',savedPage:1};
 let viewer=null, lastFocus=null;
 const icons=()=>window.lucide?.createIcons();
@@ -24,21 +29,25 @@ function head(kicker,title,desc,right=''){return `<div class="page-head"><div><d
 function segment(items,current,action){return `<div class="segmented">${items.map(([v,l])=>`<button data-action="${action}" data-value="${v}" aria-pressed="${v===current}">${l}</button>`).join('')}</div>`;}
 function empty(title,text,action=''){return `<div class="empty">${icon('notebook-pen')}<h2>${title}</h2><p>${text}</p>${action}</div>`;}
 function techniqueCopy(t){
-  return `<p class="tech-recognize">${esc(t.recognize)}</p><h4>解題步驟</h4><ol>${t.steps.map(s=>`<li>${esc(s)}</li>`).join('')}</ol><p class="tech-caution"><strong>容易失分</strong>${esc(t.mistake)}</p><h4>小例子</h4><p class="tech-example">${esc(t.example)}</p>`;
+  return `<h4>甚麼時候用？</h4><p class="tech-recognize">${esc(t.recognize)}</p><h4>可以這樣做</h4><ol>${t.steps.map(s=>`<li>${esc(s)}</li>`).join('')}</ol><p class="tech-caution"><strong>小心這一步</strong>${esc(t.mistake)}</p><h4>用小例子看一次</h4><p class="tech-example">${esc(t.example)}</p>`;
 }
-function station(topics,scope){
+function station(topics,scope,q){
   const options=techniques.map((t,i)=>({...t,i})).filter(t=>topics.includes(t.topic));
   if(!options.length)return '';
-  const selected=scope==='viewer'&&options.some(t=>t.i===viewer.method)?viewer.method:options[0].i;
-  return `<details class="technique-station" data-station="${scope}" ${scope==='viewer'&&viewer.stationOpen?'open':''}><summary>${icon('lightbulb')}<span>題型技巧站<small>辨認特徵 · 解題步驟 · 易錯位</small></span>${icon('chevron-down')}</summary><div class="station-content"><label class="field" for="technique-${scope}">課題與方法<select id="technique-${scope}" data-technique="${scope}">${options.map(t=>`<option value="${t.i}" ${selected===t.i?'selected':''}>${esc(t.topic)} · ${esc(t.title)}</option>`).join('')}</select></label><p class="tech-scope">共用方法參考；先核對題目條件，不代表每題都適用。</p><div class="technique-copy">${techniqueCopy(techniques[selected])}</div></div></details>`;
+  const preferred=q?(q.parts||[q]).flatMap(part=>questionSubtopics[key(part)]||[]):[];
+  const initial=preferred.map(subtopic=>options.find(t=>t.subtopic===subtopic)).find(Boolean)||options[0];
+  const selected=scope==='viewer'&&options.some(t=>t.i===viewer.method)?viewer.method:initial.i;
+  const subtopics=[...new Set(options.map(t=>t.subtopic))];
+  const choices=subtopics.map(subtopic=>`<optgroup label="${esc(subtopic)}">${options.filter(t=>t.subtopic===subtopic).map(t=>`<option value="${t.i}" ${selected===t.i?'selected':''}>${esc(t.subtopic)} · ${esc(t.title)}</option>`).join('')}</optgroup>`).join('');
+  return `<details class="technique-station" data-station="${scope}" ${scope==='viewer'&&viewer.stationOpen?'open':''}><summary>${icon('lightbulb')}<span>題型技巧站<small>看懂題目 · 逐步試做 · 小例子</small></span>${icon('chevron-down')}</summary><div class="station-content"><label class="field" for="technique-${scope}">想看哪種方法？<select id="technique-${scope}" data-technique="${scope}">${choices}</select></label><p class="tech-scope">這是這類題目的常用方法，不一定適合眼前這一題；先看看題目給的條件是否相同。</p><div class="technique-copy">${techniqueCopy(techniques[selected])}</div></div></details>`;
 }
 function hintContent(q){
   const hints=questionHints[key(q)],count=viewer.hints[key(q)]||0;
-  return `<div class="hint-copy" aria-live="polite">${hints.slice(0,count).map((text,i)=>`<p><strong>${['觀察重點','第一步','關鍵檢查'][i]}</strong>${esc(text)}</p>`).join('')}</div>${count<hints.length?`<button class="text-button" data-action="reveal-hint" data-id="${esc(key(q))}">${icon('eye')}提示 ${count+1}</button>`:''}${count?`<button class="icon-button" data-action="reset-hints" data-id="${esc(key(q))}" aria-label="收起 Q${esc(q.q)} 的提示" data-tip="收起提示">${icon('rotate-ccw')}</button>`:''}`;
+  return `<div class="hint-copy" aria-live="polite">${hints.slice(0,count).map((text,i)=>`<p><strong>${['先看甚麼','試做這一步','怎樣檢查'][i]}</strong>${esc(text)}</p>`).join('')}</div>${count<hints.length?`<button class="text-button" data-action="reveal-hint" data-id="${esc(key(q))}">${icon('eye')}${count?'再看一個提示':'給我一點提示'} <span>${count+1} / ${hints.length}</span></button>`:''}${count?`<button class="icon-button" data-action="reset-hints" data-id="${esc(key(q))}" aria-label="收起 Q${esc(q.q)} 的提示" data-tip="收起提示">${icon('rotate-ccw')}</button>`:''}`;
 }
 function hintsPanel(q){
   const parts=q.parts||[q],available=parts.filter(p=>questionHints[key(p)]);
-  return `<section class="question-hints" aria-label="本題提示"><h3>${icon('signpost')}本題提示</h3>${available.length?available.map(p=>`<div class="hint-part" data-hint-id="${esc(key(p))}"><h4>Q${esc(p.q)}</h4><div class="hint-content">${hintContent(p)}</div></div>`).join(''):'<p class="tech-scope">本題尚未加入已核對原卷的專屬提示，可先參考下方共用技巧。</p>'}${available.length&&available.length<parts.length?'<p class="tech-scope">其餘分題的專屬提示尚待核對。</p>':''}${available.length?'<p class="tech-scope">按原卷編寫的操練提示，非官方評分準則。</p>':''}</section>`;
+  return `<section class="question-hints" aria-label="本題提示"><h3>${icon('signpost')}本題提示</h3>${available.length?available.map(p=>`<div class="hint-part" data-hint-id="${esc(key(p))}"><h4>Q${esc(p.q)}</h4><div class="hint-content">${hintContent(p)}</div></div>`).join(''):'<p class="tech-scope">這題的提示還未核對好，暫時未能提供。下面有這類題目的常用方法可參考。</p>'}${available.length&&available.length<parts.length?'<p class="tech-scope">其餘分題的提示還未核對好，暫時未能提供。</p>':''}${available.length?'<p class="tech-scope">提示已對照原卷編寫，用來幫你思考；不是官方評分準則。</p>':''}</section>`;
 }
 function pool(){return state.level==='whole'?data.groups:data.questions;}
 function getQuestion(id,whole=false){return (whole?data.groups:data.questions).find(q=>key(q)===id)||data.groups.find(q=>key(q)===id);}
@@ -47,18 +56,29 @@ function card(q,{match=true}={}){
   const saved=isSaved(q), complete=isDone(q), whole=Boolean(q.parts);
   return `<article class="question-card ${complete?'completed':''}">
     <div class="card-top"><div class="card-kicker"><span class="dot ${q.exact?'exact':''}"></span>${match?(q.exact?'課題完全相同':`相同課題 ${q.shared?.length||0} 項`):sectionName[q.section]}${q.year==='PP'?' · 練習卷':''}</div><button class="icon-button ${saved?'on':''}" data-action="save" data-id="${esc(key(q))}" data-whole="${whole}" aria-label="${saved?'取消收藏':'收藏'} ${esc(yearName(q.year))} Q${esc(q.q)}" aria-pressed="${saved}" data-tip="${saved?'取消收藏':'加入操練'}">${icon('bookmark')}</button></div>
-    <h3>${yearName(q.year)} <span>Q${esc(q.q)}</span></h3><p class="q-summary">${esc(q.summary)}</p>
+    <h3>${yearName(q.year)} <span>Q${esc(q.q)}</span></h3><p class="q-summary">${esc(summaryOf(q))}</p>
     <div class="tags">${q.topics.map(t=>`<span class="tag ${(q.shared||[]).includes(t)?'matched':''}">${esc(t)}</span>`).join('')}</div>
     <div class="card-bottom"><span class="hint">${sectionName[q.section]} · 大題 ${q.parentMarks} 分</span><button class="text-button" data-action="open" data-id="${esc(key(q))}" data-whole="${whole}">查看原題 ${icon('arrow-up-right')}</button></div>
     ${complete?`<div class="done-label">${icon('circle-check')}已完成</div>`:''}
   </article>`;
 }
+function availableQuestions(){return pool().filter(q=>q.year===state.year);}
+function selectAvailableQuestion(value){
+  const options=availableQuestions();
+  return options.find(q=>q.q===value)||options.find(q=>q.parent===parseInt(value,10))||options[0];
+}
+function questionChoices(){
+  const options=availableQuestions();
+  return Object.entries(sectionName).map(([section,label])=>{
+    const questions=options.filter(q=>q.section===section);
+    return questions.length?`<optgroup label="${label}">${questions.map(q=>`<option value="${esc(q.q)}" ${q.q===state.q?'selected':''}>Q${esc(q.q)}</option>`).join('')}</optgroup>`:'';
+  }).join('');
+}
 function searchForm(){
   const years=Object.keys(data.papers).sort(yearSort);
-  const options=pool().filter(q=>q.year===state.year);
-  return `<section class="search-tool" aria-label="按年份及題號搜尋"><div class="search-top"><h2>${icon('scan-search')}從手上的題目開始</h2>${segment([['part','分題'],['whole','整題']],state.level,'level')}</div>
+  return `<section class="search-tool" aria-label="按年份及題號搜尋"><div class="search-top"><h2>${icon('scan-search')}從手上的題目開始</h2>${segment([['whole','整題'],['part','分題']],state.level,'level')}</div>
   <form id="search-form" novalidate><div class="search-fields"><label class="field">年份<select name="year" id="year">${years.map(y=>`<option value="${y}" ${y===state.year?'selected':''}>${y==='PP'?'PP · 練習卷':y+' 年'}</option>`).join('')}</select></label>
-  <label class="field">題號<input name="question" id="question" list="question-options" value="${esc(state.q)}" placeholder="${state.level==='whole'?'例如 4':'例如 4(b)'}" autocomplete="off" required aria-describedby="search-error"><datalist id="question-options">${options.map(q=>`<option value="${esc(q.q)}">${sectionName[q.section]}</option>`).join('')}</datalist></label>
+  <label class="field">題號<select name="question" id="question" required aria-describedby="search-error">${questionChoices()}</select></label>
   <button class="primary" type="submit">${icon('search')}尋找同類題</button></div><p id="search-error" class="error" role="alert"></p></form></section>`;
 }
 function findPage(){
@@ -69,13 +89,13 @@ function drawResults(){
   const target=document.querySelector('#search-results');
   if(!target)return;
   const q=state.source;
-  if(!q){target.innerHTML=empty('選一道題，開始操練','輸入卷一年份及題號。PP 為獨立練習卷。');return;}
+  if(!q){target.innerHTML=empty('選一道題，開始操練','選擇卷一年份及題號。PP 為獨立練習卷。');return;}
   const results=matchingQuestions(pool(),q,{selected:state.selected,mode:state.match,section:state.section,pp:state.pp});
   state.page=Math.min(state.page,Math.max(1,Math.ceil(results.length/6)));
   target.innerHTML=`<section class="current-question"><div><div class="current-label">正在配對的題目</div><div class="q-title">${yearName(q.year)} Q${esc(q.q)}<span class="section-tag">${sectionName[q.section]} · 大題 ${q.parentMarks} 分</span></div>
-  <p class="q-summary">${esc(q.summary)}</p><div class="tags" aria-label="配對課題">${q.topics.map(t=>`<button class="topic-toggle" data-action="toggle-topic" data-value="${esc(t)}" aria-pressed="${state.selected.includes(t)}">${icon(state.selected.includes(t)?'check':'plus')}${esc(t)}</button>`).join('')}</div></div>
+  <p class="q-summary">${esc(summaryOf(q))}</p><div class="tags" aria-label="配對課題">${q.topics.map(t=>`<button class="topic-toggle" data-action="toggle-topic" data-value="${esc(t)}" aria-pressed="${state.selected.includes(t)}">${icon(state.selected.includes(t)?'check':'plus')}${esc(t)}</button>`).join('')}</div></div>
   <button class="paper-thumb" data-action="open" data-id="${esc(key(q))}" data-whole="${Boolean(q.parts)}" aria-label="查看 ${yearName(q.year)} Q${esc(q.q)} 原卷"><img src="pages/${q.year}/${q.page||1}.jpg" alt="${yearName(q.year)} 原卷頁面"><span>${icon('expand')}查看原卷</span></button></section>
-  ${station(q.topics,'find')}
+  ${station(q.topics,'find',q)}
   <div class="section-heading"><h2>其他年份的同類題<span class="count">${results.length} 題</span></h2><span class="hint">優先顯示課題完全相同的題目</span></div>
   <div class="filters">${segment([['all','包含全部課題'],['exact','課題完全相同'],['any','任一相同課題']],state.match,'match')}
   <select id="section-filter" aria-label="篩選試卷部分"><option value="all">所有部分</option>${Object.entries(sectionName).map(([v,l])=>`<option value="${v}" ${state.section===v?'selected':''}>${l}</option>`).join('')}</select>
@@ -190,8 +210,8 @@ function drawViewer(){
   <div class="zoom-controls"><button class="icon-button" data-action="zoom" data-value="-0.5" ${viewer.zoom<=1?'disabled':''} aria-label="縮小原題" data-tip="縮小">${icon('zoom-out')}</button><span>${viewer.zoom*100}%</span><button class="icon-button" data-action="zoom" data-value="0.5" ${viewer.zoom>=3?'disabled':''} aria-label="放大原題" data-tip="放大">${icon('zoom-in')}</button><button class="icon-button" data-action="zoom-fit" aria-label="符合頁寬" data-tip="符合頁寬">${icon('maximize')}</button></div>
   <div class="page-controls"><button class="icon-button" data-action="paper-page" data-value="${page-1}" ${page===1?'disabled':''} aria-label="原卷上一頁">${icon('chevron-left')}</button><select id="paper-page" aria-label="原卷頁數">${Array.from({length:paper.pages},(_,i)=>`<option value="${i+1}" ${page===i+1?'selected':''}>第 ${i+1} / ${paper.pages} 頁</option>`).join('')}</select><button class="icon-button" data-action="paper-page" data-value="${page+1}" ${page===paper.pages?'disabled':''} aria-label="原卷下一頁">${icon('chevron-right')}</button></div>
   ${!q.page?`<p class="note">${icon('info')}這份原卷尚未定位題號，請用頁數選單尋找 Q${esc(q.q)}。</p>`:`<p class="note">${icon('info')}已定位大題起始頁；題目可能延續至下一頁。</p>`}
-  <h3>題目摘要</h3><p class="detail-copy">${esc(q.summary)}</p><div class="tags">${q.topics.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
-  ${hintsPanel(q)}${station(q.topics,'viewer')}
+  <h3>題目摘要</h3><p class="detail-copy">${esc(summaryOf(q))}</p><div class="tags">${q.topics.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
+  ${hintsPanel(q)}${station(q.topics,'viewer',q)}
   <button class="primary" data-action="viewer-done">${icon(isDone(q)?'circle-check':'check')} ${isDone(q)?'已完成 · 改回待完成':'標記已完成'}</button>
   <button class="secondary" data-action="viewer-save">${icon('bookmark')} ${isSaved(q)?'取消收藏':'加入我的操練'}</button>
   <a class="secondary" href="${paper.url}#page=${page}" target="_blank" rel="noopener">${icon('external-link')}開啟原卷 PDF</a>
@@ -202,7 +222,11 @@ function refreshCards(){if(state.route==='find')drawResults();else if(state.rout
 document.addEventListener('click',e=>{
   const b=e.target.closest('[data-action]');if(!b||b.disabled||!data)return;
   const a=b.dataset.action,v=b.dataset.value;
-  if(a==='level'){state.level=v;state.q=String(state.source?.parent||1);state.source=null;findPage();runSearch();icons();}
+  if(a==='level'){
+    if(state.level===v)return;
+    state.level=v;state.q=selectAvailableQuestion(state.q).q;state.source=null;
+    findPage();runSearch();icons();
+  }
   else if(a==='match'){state.match=v;state.page=1;drawResults();}
   else if(a==='toggle-topic'){state.selected=state.selected.includes(v)?state.selected.filter(t=>t!==v):[...state.selected,v];state.page=1;drawResults();}
   else if(a==='page'){state.page=Number(v);drawResults();document.querySelector('.section-heading')?.scrollIntoView({block:'start'});}
@@ -240,7 +264,12 @@ document.addEventListener('change',e=>{
     if(e.target.dataset.technique==='viewer')viewer.method=Number(e.target.value);
     e.target.closest('.technique-station').querySelector('.technique-copy').innerHTML=techniqueCopy(t);
   }
-  if(e.target.id==='year'){state.year=e.target.value;document.querySelector('#question-options').innerHTML=pool().filter(q=>q.year===state.year).map(q=>`<option value="${esc(q.q)}">${sectionName[q.section]}</option>`).join('');}
+  if(e.target.id==='year'){
+    state.year=e.target.value;state.q=selectAvailableQuestion(state.q).q;
+    document.querySelector('#question').innerHTML=questionChoices();
+    runSearch();
+  }
+  if(e.target.id==='question')runSearch(e.target.value);
   if(e.target.id==='section-filter'){state.section=e.target.value;state.page=1;drawResults();}
   if(e.target.id==='pp-filter'){state.pp=e.target.checked;state.page=1;drawResults();}
   if(e.target.id==='paper-page'){viewer.page=Number(e.target.value);drawViewer();}
@@ -255,7 +284,7 @@ window.addEventListener('hashchange',()=>{state.route=location.hash.slice(1)||'f
 try{
   const response=await fetch('data.json');if(!response.ok)throw new Error('data unavailable');
   data=await response.json();
-  state.source=data.questions.find(q=>q.year===state.year&&q.q===state.q);
+  state.source=pool().find(q=>q.year===state.year&&q.q===state.q);
   state.selected=[...state.source.topics];state.route=location.hash.slice(1)||'find';
   if(!['find','topics','guide','saved'].includes(state.route))state.route='find';
   render();
