@@ -1,6 +1,7 @@
 import {matchingQuestions, normalizeQuestion} from './matching.js';
 import {techniques, questionHints, questionSubtopics, reviewedSummaries} from './techniques.js';
 import {plainSummary} from './plain-language.js';
+import {paperStatuses,validateBackup,mergeProgress} from './progress.js';
 const main=document.querySelector('main'), dialog=document.querySelector('dialog');
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon=name=>`<i data-lucide="${name}"></i>`;
@@ -22,12 +23,44 @@ function summaryHelp(q){
 }
 const yearSort=(a,b)=>(Number(b)||0)-(Number(a)||0);
 let data, stored={}, memoryOnly=false;
+let extra={last:null,papers:{},hideOutside:false},pendingImport=null,backupMessage='',importReadId=0;
+try{const raw=JSON.parse(localStorage.getItem('dse-extra-v1')||'null');if(raw)extra=raw;}catch{memoryOnly=true;}
 try{stored=JSON.parse(localStorage.getItem('dse-practice-v1')||'{}');if(!stored||Array.isArray(stored)||typeof stored!=='object')stored={};stored=Object.fromEntries(Object.entries(stored).filter(([,v])=>v&&typeof v==='object'));}catch{memoryOnly=true;}
 let state={route:'find',entry:'lookup',advanced:false,level:'whole',year:'2026',q:'4',source:null,selected:[],match:'all',section:'all',pp:false,page:1,
   topicSection:'all',topicSearch:'',topicPage:1,topicDetail:null,guide:'foundation',savedFilter:'all',savedPage:1};
 let viewer=null, lastFocus=null;
 const icons=()=>window.lucide?.createIcons();
-function persist(){try{localStorage.setItem('dse-practice-v1',JSON.stringify(stored));}catch{memoryOnly=true;toast('瀏覽器未能儲存；本次操練紀錄只會暫存。');}}
+function persist(){
+  let beforeQuestions,beforeExtra;
+  try{
+    beforeQuestions=localStorage.getItem('dse-practice-v1');beforeExtra=localStorage.getItem('dse-extra-v1');
+    localStorage.setItem('dse-extra-v1',JSON.stringify(extra));
+    localStorage.setItem('dse-practice-v1',JSON.stringify(stored));memoryOnly=false;return true;
+  }catch{
+    try{
+      if(beforeExtra!==undefined)beforeExtra===null?localStorage.removeItem('dse-extra-v1'):localStorage.setItem('dse-extra-v1',beforeExtra);
+      if(beforeQuestions!==undefined)beforeQuestions===null?localStorage.removeItem('dse-practice-v1'):localStorage.setItem('dse-practice-v1',beforeQuestions);
+    }catch{}
+    memoryOnly=true;toast('瀏覽器未能儲存；本次紀錄只會暫存，請下載進度備份。');return false;
+  }
+}
+function resumePanel(){
+  const last=extra.last,q=last&&getQuestion(last.id,last.whole);
+  const stuck=Object.values(stored).filter(v=>v.saved&&v.outcome==='stuck').length;
+  return `<section class="resume-panel" aria-label="繼續練習"><div><strong>${q?'繼續上次練習':'今天想重練哪一題？'}</strong><p>${q?`${yearName(q.year)} Q${esc(q.q)}${outsideScope(q)?' · 已標記超綱':''}`:'做題後記下掌握程度，下次便能接着練。'}</p></div><div class="practice-actions">${q?'<button class="primary" data-action="resume">繼續上次</button>':''}<button class="secondary" data-action="show-stuck">還未明白 · ${stuck} 題</button></div></section>`;
+}
+function scopeFilter(){
+  return `<label class="scope-filter"><input type="checkbox" data-hide-outside ${extra.hideOutside?'checked':''}><span>隱藏已標記超綱的題目<small>只排除已核對的極坐標題，不代表其他課題已全面核對。原卷 PDF 不會裁掉題目。</small></span></label>`;
+}
+function backupPanel(){
+  return `<section class="backup-panel"><h2>把進度帶到另一部裝置</h2><p>先下載備份，再把檔案傳到另一部裝置，在這裏匯入。不用帳戶，不會上傳伺服器；請妥善保管備份。</p><div class="practice-actions"><button class="secondary" data-action="export-progress">下載進度備份</button><label class="secondary backup-upload">選擇備份檔<input id="import-progress" type="file" accept=".json,application/json"></label></div><p>包括收藏、自評、上次練習及整卷紀錄；不包括作答內容、已開啟提示或自動同步。</p><p role="status">${esc(backupMessage)}</p>${pendingImport?`<div class="import-preview"><strong>準備合併 ${Object.keys(pendingImport.questions).length} 筆題目、${Object.keys(pendingImport.extra.papers).length} 份整卷紀錄</strong><p>同一項保留較新的紀錄；時間相同保留本機紀錄。請先下載本機備份，方便日後還原。找題顯示設定維持本機選擇。</p><button class="primary" data-action="confirm-import">確認合併進度</button><button class="secondary" data-action="cancel-import">取消</button></div>`:''}</section>`;
+}
+function exportProgress(){
+  const questions=Object.fromEntries(Object.entries(stored).filter(([id])=>getQuestion(id)).map(([id,v])=>[id,{saved:!!v.saved,done:!!v.done,outcome:v.outcome||null,time:v.time||0}]));
+  const payload={app:'dse-maths',version:1,exportedAt:new Date().toISOString(),questions,extra};
+  const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));
+  const a=document.createElement('a');a.href=url;a.download=`dse-progress-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
 function toast(text){const t=document.querySelector('#toast');t.textContent=text;t.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('show'),2200);}
 const isSaved=q=>Boolean(stored[key(q)]?.saved);
 const isDone=q=>Boolean(stored[key(q)]?.done);
@@ -111,7 +144,7 @@ function searchForm(){
 }
 function findPage(){
   main.innerHTML=head('一步一步練習','從一題開始，慢慢練穩。','先試做，卡住時看一點提示，再決定下一步。')+
-  `<div class="entry-options" role="group" aria-label="你想怎樣開始？"><button data-action="entry" data-value="lookup" aria-pressed="${state.entry==='lookup'}">${icon('search')}<span><strong>我有題目要查</strong><small>選年份和題號，找同類題練習</small></span></button><button data-action="entry" data-value="foundation" aria-pressed="${state.entry==='foundation'}">${icon('sprout')}<span><strong>我想由基礎開始</strong><small>不用知道題號，先選一種練習</small></span></button></div>
+  resumePanel()+`<div class="entry-options" role="group" aria-label="你想怎樣開始？"><button data-action="entry" data-value="lookup" aria-pressed="${state.entry==='lookup'}">${icon('search')}<span><strong>我有題目要查</strong><small>選年份和題號，找同類題練習</small></span></button><button data-action="entry" data-value="foundation" aria-pressed="${state.entry==='foundation'}">${icon('sprout')}<span><strong>我想由基礎開始</strong><small>不用知道題號，先選一種練習</small></span></button></div>
   ${state.entry==='foundation'?`<section class="starter-panel"><h2>今天先練哪一種？</h2><p>以下都是甲一分題，附有逐步提示。選一題，用紙筆試做即可。</p><div class="starter-options">${[
     ['2026:2','整理字母的次方','先練相乘、相除時怎樣處理次方'],
     ['2026:4(a)','把式子拆成括號','先找每項都有的部分'],
@@ -134,7 +167,7 @@ function drawResults(){
   if(!target)return;
   const q=state.source;
   if(!q){target.innerHTML=empty('選一道題，開始操練','選擇卷一年份及題號。PP 為獨立練習卷。');return;}
-  const results=matchingQuestions(pool(),q,{selected:state.selected,mode:state.match,section:state.section,pp:state.pp});
+  const results=matchingQuestions(pool(),q,{selected:state.selected,mode:state.match,section:state.section,pp:state.pp}).filter(q=>!extra.hideOutside||!outsideScope(q));
   const defaultTopics=q.topics.length===state.selected.length&&q.topics.every(t=>state.selected.includes(t));
   const defaultFilters=state.match==='all'&&state.section==='all'&&!state.pp&&defaultTopics;
   state.page=Math.min(state.page,Math.max(1,Math.ceil(results.length/6)));
@@ -143,6 +176,7 @@ function drawResults(){
   <div class="question-start"><div class="practice-actions"><button class="primary" data-action="open" data-id="${esc(key(q))}" data-whole="${Boolean(q.parts)}">開始做題 ${icon('arrow-right')}</button><button class="secondary" data-action="open-hints" data-id="${esc(key(q))}" data-whole="${Boolean(q.parts)}">${icon('lightbulb')}我需要提示</button></div><p>用紙筆試做即可；提示不會一次全部打開。</p></div>
   <button class="paper-thumb" data-action="open" data-id="${esc(key(q))}" data-whole="${Boolean(q.parts)}" aria-label="查看 ${yearName(q.year)} Q${esc(q.q)} 原卷"><img src="pages/${q.year}/${q.page||1}.jpg" alt="${yearName(q.year)} 原卷頁面"><span>${icon('expand')}查看原卷</span></button></section>
   ${station(q.topics,'find',q)}
+  ${scopeFilter()}
   <div class="section-heading"><h2>其他年份的同類題<span class="count">${results.length} 題</span></h2><span class="hint">優先顯示課題完全相同的題目</span></div>
   <details class="advanced-filters" ${state.advanced?'open':''}><summary>調整找題條件 <small>${defaultFilters?'預設找法':esc(matchChoices.find(([value])=>value===state.match)[1])+' · '+(state.section==='all'?'所有部分':sectionName[state.section])+(state.pp?' · 包括 PP':'')+(!defaultTopics?' · 已更改課題':'')}</small></summary>
   <div class="filter-content"><p class="filter-intro">不用每項都改。題目太少時，可選「找多一點選擇」。</p>
@@ -169,7 +203,7 @@ function runSearch(value=state.q,year=state.year){
   drawResults();return true;
 }
 function topicsPage(){
-  main.innerHTML=head('TOPIC INSIGHTS','時間有限，先看重點。','正式試卷獨立統計；同一大題中的相同課題只計一次。')+
+  main.innerHTML=head('TOPIC INSIGHTS','時間有限，先看重點。','統計保留歷年內容，包括已標記超綱題；隱藏題目不會改變歷年數字。')+
   `<div class="stat-strip"><div><strong>15<em>年</em></strong><span>2012–2026 正式試卷</span></div><div><strong>286<em>題</em></strong><span>正式卷一大題</span></div><div><strong>43<em>項</em></strong><span>課題分類 · PP 另計</span></div></div>
   <div class="section-heading"><h2>課題出現次數</h2><div class="search-mini">${icon('search')}<input id="topic-search" placeholder="搜尋課題" aria-label="搜尋課題" value="${esc(state.topicSearch)}"></div></div>
   <div class="tab-row">${[['all','全卷'],['A1','甲一 · 基礎短題'],['A2','甲二'],['B','乙部']].map(([v,l])=>`<button class="${state.topicSection===v?'active':''}" data-action="topic-section" data-value="${v}">${l}</button>`).join('')}</div>
@@ -192,8 +226,13 @@ function drawTopicExamples(){
   const el=document.querySelector('#topic-examples');if(!el)return;
   if(!state.topicDetail){el.innerHTML='';return;}
   const s=data.stats.find(s=>s.topic===state.topicDetail);
-  const qs=data.groups.filter(q=>q.year!=='PP'&&q.topics.includes(s.topic)&&(state.topicSection==='all'||q.section===state.topicSection)).sort((a,b)=>yearSort(a.year,b.year)||a.parent-b.parent).slice(0,6);
+  const qs=data.groups.filter(q=>q.year!=='PP'&&q.topics.includes(s.topic)&&(state.topicSection==='all'||q.section===state.topicSection)&&(!extra.hideOutside||!outsideScope(q))).sort((a,b)=>yearSort(a.year,b.year)||a.parent-b.parent).slice(0,6);
   el.innerHTML=`<section class="topic-examples"><div class="section-heading"><div><h2>${esc(s.topic)}</h2><p class="hint">正式卷 ${s.count} 題 · ${s.years}/15 年出現 · PP ${s.pp} 題</p></div><button class="icon-button" data-action="close-topic" aria-label="收起課題例子">${icon('x')}</button></div>${scopeNotice({topics:[s.topic]})}${station([s.topic],'topics')}${qs.length?`<div class="result-grid">${qs.map(q=>card(q,{match:false})).join('')}</div>`:empty('這個部分未有記錄','此統計不代表該課題不屬現行考試範圍。')}</section>`;
+  el.querySelector('.section-heading').insertAdjacentHTML('afterend',scopeFilter());
+  if(extra.hideOutside&&!qs.length){
+    el.querySelector('.empty h2').textContent='目前沒有顯示的題目';
+    el.querySelector('.empty p').textContent='可取消超綱篩選或改選其他試卷部分；歷年統計保持不變。';
+  }
   icons();
 }
 const foundation=[
@@ -236,12 +275,16 @@ function guidePage(){
   <h2>資料範圍</h2><p>15 份正式卷一，286 道大題及629筆分題記錄；另有 PP 19道大題及40筆分題記錄。排名不計 PP，未拆分的整題也算一筆分題。課題配對依現有 Excel 分類，不包含卷二分佈，也不是未來試卷預測。</p><p>歷年試卷跨越課程調整，使用舊題及 PP 時須核對應考年份課程。低頻或零次不等於不會考。</p>
   <h2>參考資料</h2><p><a href="https://www.hkeaa.edu.hk/DocLibrary/HKDSE/Subject_Information/math/2027hkdse-e-math.pdf" target="_blank" rel="noopener">考評局 2027 數學科評核架構 ${icon('external-link')}</a></p><p><a href="https://www.hkeaa.edu.hk/en/HKDSE/assessment/the_reporting_system/SRR/" target="_blank" rel="noopener">考評局水平參照評級 ${icon('external-link')}</a></p></section>`;
 }
+function paperProgressForm(year){
+  const row=extra.papers[year]||{question:'',status:'working'};
+  return `<details class="paper-record" ${extra.papers[year]?'open':''}><summary>記錄／查看整卷進度</summary><form class="paper-progress" data-paper-record="${year}"><h3>我的整卷進度</h3><label class="field">做到哪一道大題？<select name="question"><option value="">尚未記錄題號</option>${data.groups.filter(q=>q.year===year).map(q=>`<option value="${esc(q.q)}" ${row.question===q.q?'selected':''}>Q${esc(q.q)}</option>`).join('')}</select></label><label class="field">現在的狀態<select name="status">${Object.entries(paperStatuses).map(([value,label])=>`<option value="${value}" ${row.status===value?'selected':''}>${label}</option>`).join('')}</select></label><button class="secondary" type="submit">儲存整卷進度</button><p class="paper-record-message" role="status">${extra.papers[year]?`已記錄：${row.question?'Q'+esc(row.question)+' · ':''}${paperStatuses[row.status]}`:'手動記錄，不會從 PDF 自動讀取進度。'}</p></form></details>`;
+}
 function papersPage(){
   const years=Object.keys(data.papers).filter(year=>year!=='PP').sort(yearSort);
   const paperCard=year=>{
     const paper=data.papers[year];
     const excluded=data.groups.filter(q=>q.year===year&&outsideScope(q));
-    return `<article class="whole-paper-card"><div class="eyebrow">${year==='PP'?'額外練習 · 非正式年份試卷':'DSE 數學 · 必修部分'}</div><h2>${year==='PP'?'PP 練習卷':year+' 年卷一'}</h2><p>完整 PDF · ${paper.pages} 頁（檔案總頁數）</p>${excluded.length?`<div class="scope-notice"><strong>已超出課程範圍 · 極坐標</strong><span>${excluded.map(q=>'Q'+esc(q.q)).join('、')} 可略過；原卷保留完整內容。</span></div>`:''}<div class="practice-actions"><a class="primary" href="${esc(paper.url)}#page=1" target="_blank" rel="noopener" aria-label="開啟 ${year} 整份卷一">開啟整卷 ${icon('external-link')}</a><a class="secondary" href="${esc(paper.url)}" download="${esc(paper.name)}" aria-label="下載 ${year} 卷一">下載列印 ${icon('download')}</a></div></article>`;
+    return `<article class="whole-paper-card"><div class="eyebrow">${year==='PP'?'額外練習 · 非正式年份試卷':'DSE 數學 · 必修部分'}</div><h2>${year==='PP'?'PP 練習卷':year+' 年卷一'}</h2><p>完整 PDF · ${paper.pages} 頁（檔案總頁數）</p>${excluded.length?`<div class="scope-notice"><strong>已超出課程範圍 · 極坐標</strong><span>${excluded.map(q=>'Q'+esc(q.q)).join('、')} 可略過；原卷保留完整內容。</span></div>`:''}<div class="practice-actions"><a class="primary" href="${esc(paper.url)}#page=1" target="_blank" rel="noopener" aria-label="開啟 ${year} 整份卷一">開啟整卷 ${icon('external-link')}</a><a class="secondary" href="${esc(paper.url)}" download="${esc(paper.name)}" aria-label="下載 ${year} 卷一">下載列印 ${icon('download')}</a></div>${paperProgressForm(year)}</article>`;
   };
   main.innerHTML=head('按年份練習','選一年，試做一整份。','先分段完成也可以；熟習後，再按卷面時間限時操卷。')+
   `<section class="paper-preparation"><h2>開始前，準備紙筆和計算機</h2><ol><li>選一份未做過的卷，在新分頁開啟，或下載列印。</li><li>先看封面的作答時間和指示；未能一次完成，可記下停在哪題，下次繼續。</li><li>做完才對答案，分清自己做到、需要協助和仍未明白的題，再回「同類題搜尋」補練。</li></ol><p class="note">部分檔案附有評分資料，操卷時先不要往後看。本頁目前只有卷一，未收錄卷二 MC；整卷成績和用時不會自動記錄。</p></section>
@@ -250,12 +293,15 @@ function papersPage(){
 }
 function savedPage(){
   const all=Object.entries(stored).filter(([,v])=>v.saved).map(([id,v])=>({...getQuestion(id),savedTime:v.time})).filter(q=>q.id).sort((a,b)=>b.savedTime-a.savedTime);
-  const rows=all.filter(q=>state.savedFilter==='all'||(state.savedFilter==='done'?isDone(q):!isDone(q)));
+  const selected=all.filter(q=>state.savedFilter==='all'||(state.savedFilter==='stuck'?stored[key(q)]?.outcome==='stuck':state.savedFilter==='done'?isDone(q):!isDone(q)));
+  const rows=selected.filter(q=>!extra.hideOutside||!outsideScope(q));
   state.savedPage=Math.min(state.savedPage,Math.max(1,Math.ceil(rows.length/6)));
   main.innerHTML=head('YOUR PRACTICE','留給下一次的自己。','收藏想再做的題目，把每一步進展留在這裡。')+
   `<div class="saved-stats"><span>已收藏 <strong>${all.length}</strong></span><span>已完成 <strong>${all.filter(isDone).length}</strong></span><span>待完成 <strong>${all.filter(q=>!isDone(q)).length}</strong></span></div>
-  <div class="section-heading">${segment([['all','全部'],['pending','待完成'],['done','已完成']],state.savedFilter,'saved-filter')}</div>
-  ${rows.length?`<div class="result-grid">${rows.slice((state.savedPage-1)*6,state.savedPage*6).map(q=>card(q,{match:false})).join('')}</div>${pager(rows.length,state.savedPage,'saved-page')}`:empty('留下一題，下次再練。','把搜尋結果中的題目加入收藏，便能在這裡繼續操練。','<a class="primary" href="#find">尋找同類題</a>')}
+  <div class="section-heading">${segment([['all','全部'],['stuck','還未明白'],['pending','待完成'],['done','已完成']],state.savedFilter,'saved-filter')}</div>
+  ${scopeFilter()}${state.savedFilter==='stuck'?'<p class="retry-intro">先挑一題，看一點提示再試；明白後重新選擇掌握程度，這題便會移出本清單。</p>':''}
+  ${rows.length?`<div class="result-grid">${rows.slice((state.savedPage-1)*6,state.savedPage*6).map(q=>card(q,{match:false})).join('')}</div>${pager(rows.length,state.savedPage,'saved-page')}`:empty(state.savedFilter==='stuck'?'目前沒有顯示「還未明白」的題目':'目前沒有符合的收藏',extra.hideOutside&&selected.length?'有題目被超綱篩選隱藏；取消勾選可查看。':'做題時選擇掌握程度，或按書籤收藏，便能在這裏繼續。','<a class="primary" href="#find">尋找同類題</a>')}
+  ${backupPanel()}
   <p class="storage-note">${memoryOnly?'瀏覽器未能永久儲存，本次紀錄只會暫存。':'操練紀錄只儲存在本機瀏覽器，不會上傳；更換裝置或清除瀏覽器資料後不會保留。'}</p>`;
 }
 function render(){
@@ -264,6 +310,8 @@ function render(){
   icons();updateCount();
 }
 function openPaper(q){
+  if(!q)return;
+  extra.last={id:key(q),whole:Boolean(q.parts),time:Date.now()};persist();
   if(!dialog.open)lastFocus=document.activeElement;
   viewer={q,page:q.page||1,zoom:1,reading:false,hints:{},stationOpen:false,method:null};
   drawViewer();
@@ -299,6 +347,20 @@ document.addEventListener('click',e=>{
   const b=e.target.closest('[data-action]');if(!b||b.disabled||!data)return;
   const a=b.dataset.action,v=b.dataset.value;
   if(a==='entry'){state.entry=v;findPage();document.querySelector(`[data-action="entry"][data-value="${v}"]`)?.focus();}
+  else if(a==='resume'){
+    const q=extra.last&&getQuestion(extra.last.id,extra.last.whole);
+    if(q){state.entry='lookup';state.level=q.parts?'whole':'part';state.year=q.year;state.q=q.q;state.source=q;state.selected=[...q.topics];state.page=1;findPage();document.querySelector('.question-start .primary')?.focus();openPaper(q);}
+  }
+  else if(a==='show-stuck'){state.savedFilter='stuck';state.savedPage=1;location.hash='saved';}
+  else if(a==='export-progress')exportProgress();
+  else if(a==='cancel-import'){importReadId++;pendingImport=null;backupMessage='已取消，紀錄沒有更改。';savedPage();icons();}
+  else if(a==='confirm-import'&&pendingImport){
+    const merged=mergeProgress({questions:stored,extra},pendingImport);
+    const previous={stored,extra};stored=merged.questions;extra=merged.extra;
+    if(persist()){pendingImport=null;backupMessage='已合併及儲存。可在「我的操練」及「整卷操練」查看。';}
+    else{stored=previous.stored;extra=previous.extra;backupMessage='未能永久儲存，沒有套用匯入。請先下載現有進度備份。';}
+    savedPage();icons();updateCount();
+  }
   else if(a==='starter'){
     const q=getQuestion(b.dataset.id);
     state.entry='lookup';state.level='part';state.year=q.year;state.q=q.q;state.source=q;state.selected=[...q.topics];state.page=1;state.match='all';state.section='all';state.pp=false;
@@ -357,9 +419,34 @@ document.addEventListener('click',e=>{
   else if(a==='saved-page'){state.savedPage=Number(v);savedPage();}
   icons();
 });
-document.addEventListener('submit',e=>{if(e.target.id==='search-form'){e.preventDefault();runSearch(e.target.question.value,e.target.year.value);}});
+document.addEventListener('submit',e=>{
+  if(e.target.id==='search-form'){e.preventDefault();runSearch(e.target.question.value,e.target.year.value);}
+  if(e.target.matches('[data-paper-record]')){
+    e.preventDefault();const form=e.target,year=form.dataset.paperRecord;
+    extra.papers[year]={question:form.elements.question.value,status:form.elements.status.value,time:Date.now()};
+    const success=persist();form.querySelector('.paper-record-message').textContent=success?'已儲存：'+(extra.papers[year].question?'Q'+extra.papers[year].question+' · ':'')+paperStatuses[extra.papers[year].status]:'只暫存於本次使用，請到「我的操練」下載備份。';
+  }
+});
 document.addEventListener('toggle',e=>{if(e.target.isConnected&&e.target.matches('.advanced-filters'))state.advanced=e.target.open;},true);
-document.addEventListener('change',e=>{
+document.addEventListener('change',async e=>{
+  if(e.target.id==='import-progress'){
+    const file=e.target.files[0];if(!file)return;
+    const readId=++importReadId;
+    pendingImport=null;
+    try{
+      if(file.size>1024*1024)throw new Error('檔案太大，請選擇 1 MB 以內的進度備份。');
+      const text=await file.text();if(readId!==importReadId)return;
+      pendingImport=validateBackup(JSON.parse(text),data);
+      backupMessage='檔案已檢查，尚未更改紀錄。';
+    }catch(error){backupMessage=error instanceof SyntaxError?'無法讀取這個檔案，請選擇網站下載的 JSON 備份。':error.message;}
+    if(state.route==='saved'){savedPage();icons();document.querySelector('.backup-panel')?.scrollIntoView({block:'nearest'});}
+    return;
+  }
+  if(e.target.matches('[data-hide-outside]')){
+    extra.hideOutside=e.target.checked;state.page=1;state.savedPage=1;persist();
+    if(state.route==='find')drawResults();else if(state.route==='saved')savedPage();else if(state.route==='topics')drawTopicExamples();
+    icons();document.querySelector('[data-hide-outside]')?.focus({preventScroll:true});return;
+  }
   if(e.target.dataset.technique){
     const t=techniques[Number(e.target.value)];
     if(!t)return;
@@ -380,12 +467,18 @@ dialog.addEventListener('toggle',e=>{
   if(viewer&&e.target.dataset.station==='viewer')viewer.stationOpen=e.target.open;
 },true);
 document.addEventListener('input',e=>{if(e.target.id==='topic-search'){state.topicSearch=e.target.value;state.topicPage=1;drawChart();}});
-dialog.addEventListener('close',()=>{viewer=null;(lastFocus?.isConnected?lastFocus:document.querySelector('.question-start .primary, nav a'))?.focus();});
+dialog.addEventListener('close',()=>{
+  viewer=null;
+  if(state.route==='find'){const old=document.querySelector('.resume-panel');if(old){old.outerHTML=resumePanel();icons();}}
+  (lastFocus?.isConnected?lastFocus:document.querySelector('.question-start .primary, nav a'))?.focus();
+});
 dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
 window.addEventListener('hashchange',()=>{state.route=location.hash.slice(1)||'find';if(!['find','topics','papers','guide','saved'].includes(state.route))state.route='find';render();window.scrollTo(0,0);});
 try{
   const response=await fetch('data.json');if(!response.ok)throw new Error('data unavailable');
   data=await response.json();
+  try{extra=validateBackup({app:'dse-maths',version:1,questions:{},extra},data).extra;}
+  catch{extra={last:null,papers:{},hideOutside:false};}
   state.source=pool().find(q=>q.year===state.year&&q.q===state.q);
   state.selected=[...state.source.topics];state.route=location.hash.slice(1)||'find';
   if(!['find','topics','papers','guide','saved'].includes(state.route))state.route='find';
