@@ -1,5 +1,6 @@
 import {matchingQuestions, normalizeQuestion} from './matching.js';
 import {techniques, questionHints, questionSubtopics, reviewedSummaries} from './techniques.js';
+import {formulaPanel, hintFormulaPanel} from './formulas.js';
 import {plainSummary} from './plain-language.js';
 import {paperStatuses,validateBackup,mergeProgress} from './progress.js';
 const main=document.querySelector('main'), dialog=document.querySelector('dialog');
@@ -89,7 +90,7 @@ function head(kicker,title,desc,right=''){return `<div class="page-head"><div><d
 function segment(items,current,action){return `<div class="segmented">${items.map(([v,l])=>`<button data-action="${action}" data-value="${v}" aria-pressed="${v===current}">${l}</button>`).join('')}</div>`;}
 function empty(title,text,action=''){return `<div class="empty">${icon('notebook-pen')}<h2>${title}</h2><p>${text}</p>${action}</div>`;}
 function techniqueCopy(t){
-  return `${scopeNotice({topics:[t.topic]})}<h4>甚麼時候用？</h4><p class="tech-recognize">${esc(t.recognize)}</p><h4>可以這樣做</h4><ol>${t.steps.map(s=>`<li>${esc(s)}</li>`).join('')}</ol><p class="tech-caution"><strong>小心這一步</strong>${esc(t.mistake)}</p><h4>用小例子看一次</h4><p class="tech-example">${esc(t.example)}</p>`;
+  return `${scopeNotice({topics:[t.topic]})}<h4>甚麼時候用？</h4><p class="tech-recognize">${esc(t.recognize)}</p>${formulaPanel(t)}<h4>可以這樣做</h4><ol>${t.steps.map(s=>`<li>${esc(s)}</li>`).join('')}</ol><p class="tech-caution"><strong>小心這一步</strong>${esc(t.mistake)}</p><h4>用小例子看一次</h4><p class="tech-example">${esc(t.example)}</p>`;
 }
 function station(topics,scope,q){
   const options=techniques.map((t,i)=>({...t,i})).filter(t=>topics.includes(t.topic));
@@ -103,7 +104,7 @@ function station(topics,scope,q){
 }
 function hintContent(q){
   const hints=questionHints[key(q)],count=viewer.hints[key(q)]||0;
-  return `<div class="hint-copy" aria-live="polite">${hints.slice(0,count).map((text,i)=>`<p><strong>${['先看甚麼','試做這一步','怎樣檢查'][i]}</strong>${esc(text)}</p>`).join('')}</div>${count<hints.length?`<button class="text-button" data-action="reveal-hint" data-id="${esc(key(q))}">${icon('eye')}${count?'再看一個提示':'給我一點提示'} <span>${count+1} / ${hints.length}</span></button>`:''}${count?`<button class="icon-button" data-action="reset-hints" data-id="${esc(key(q))}" aria-label="收起 Q${esc(q.q)} 的提示" data-tip="收起提示">${icon('rotate-ccw')}</button>`:''}`;
+  return `<div class="hint-copy" aria-live="polite">${hints.slice(0,count).map((text,i)=>`<p><strong>${['先看甚麼','試做這一步','怎樣檢查'][i]}</strong>${esc(text)}</p>${hintFormulaPanel(key(q),i)}`).join('')}</div>${count<hints.length?`<button class="text-button" data-action="reveal-hint" data-id="${esc(key(q))}">${icon('eye')}${count?'再看一個提示':'給我一點提示'} <span>${count+1} / ${hints.length}</span></button>`:''}${count?`<button class="icon-button" data-action="reset-hints" data-id="${esc(key(q))}" aria-label="收起 Q${esc(q.q)} 的提示" data-tip="收起提示">${icon('rotate-ccw')}</button>`:''}`;
 }
 function hintsPanel(q){
   const parts=q.parts||[q],available=parts.filter(p=>questionHints[key(p)]);

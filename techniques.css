@@ -16,6 +16,18 @@
 .tech-caution{border-left:3px solid #dc9664;padding:8px 12px;background:#fff9ee}
 .tech-caution strong,.hint-copy strong{display:block;font-size:12px;margin-bottom:4px}
 .tech-example{font-family:system-local,"Segoe UI",sans-serif;line-height:1.9}
+.formula-panel{min-width:0;margin:18px 0;padding:14px;border:1px solid #b9cec4;border-left:4px solid var(--green);border-radius:8px;background:#fffdf6}
+.technique-copy .formula-panel h4{margin:0 0 8px;font-size:15px;color:var(--green)}
+.formula-note{margin:0 0 14px;font-size:13px;line-height:1.8;color:#465a50}
+.formula-help{display:block;color:#52645b;font-size:12px;margin-bottom:8px}
+.hint-formulas{min-width:0;padding:0 12px;margin:0 0 14px;background:#fffdf6;border:1px solid #d6dfd2;border-radius:8px}
+.hint-formulas .formula-item:first-child{border-top:0}
+.formula-item{min-width:0;margin:0;padding:12px 0;border-top:1px solid #e1e7dc}
+.formula-item figcaption{font-size:13px;font-weight:700;color:#465a50;margin-bottom:10px}
+.formula-scroll{max-width:100%;overflow-x:auto;overflow-y:hidden;padding:8px 3px 12px;overscroll-behavior-x:contain}
+.formula-scroll:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+.formula-scroll math{width:max-content;min-width:0;margin:0;font-size:20px;color:#18392c;line-height:normal}
+.formula-scroll mtext{font-family:"STIX Two Math","Cambria Math","Times New Roman",serif}
 .question-hints{border-top:1px solid var(--line);padding-top:16px;margin-top:18px;margin-bottom:20px}
 .question-hints h3{display:flex!important;align-items:center;gap:8px;font-size:15px}
 .hint-part+.hint-part{border-top:1px solid var(--line);margin-top:12px}
