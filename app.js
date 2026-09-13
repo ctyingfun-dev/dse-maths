@@ -3,6 +3,8 @@ import {techniques, questionHints, questionSubtopics, reviewedSummaries} from '.
 import {formulaPanel, hintFormulaPanel} from './formulas.js';
 import {plainSummary} from './plain-language.js';
 import {paperStatuses,validateBackup,mergeProgress} from './progress.js';
+import {programsPage} from './programs.js';
+import {programHintPanel} from './program-hints.js';
 const main=document.querySelector('main'), dialog=document.querySelector('dialog');
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon=name=>`<i data-lucide="${name}"></i>`;
@@ -104,7 +106,7 @@ function station(topics,scope,q){
 }
 function hintContent(q){
   const hints=questionHints[key(q)],count=viewer.hints[key(q)]||0;
-  return `<div class="hint-copy" aria-live="polite">${hints.slice(0,count).map((text,i)=>`<p><strong>${['先看甚麼','試做這一步','怎樣檢查'][i]}</strong>${esc(text)}</p>${hintFormulaPanel(key(q),i)}`).join('')}</div>${count<hints.length?`<button class="text-button" data-action="reveal-hint" data-id="${esc(key(q))}">${icon('eye')}${count?'再看一個提示':'給我一點提示'} <span>${count+1} / ${hints.length}</span></button>`:''}${count?`<button class="icon-button" data-action="reset-hints" data-id="${esc(key(q))}" aria-label="收起 Q${esc(q.q)} 的提示" data-tip="收起提示">${icon('rotate-ccw')}</button>`:''}`;
+  return `<div class="hint-copy" aria-live="polite">${hints.slice(0,count).map((text,i)=>`<p><strong>${['先看甚麼','試做這一步','怎樣檢查'][i]}</strong>${esc(text)}</p>${hintFormulaPanel(key(q),i)}${programHintPanel(key(q),i)}`).join('')}</div>${count<hints.length?`<button class="text-button" data-action="reveal-hint" data-id="${esc(key(q))}">${icon('eye')}${count?'再看一個提示':'給我一點提示'} <span>${count+1} / ${hints.length}</span></button>`:''}${count?`<button class="icon-button" data-action="reset-hints" data-id="${esc(key(q))}" aria-label="收起 Q${esc(q.q)} 的提示" data-tip="收起提示">${icon('rotate-ccw')}</button>`:''}`;
 }
 function hintsPanel(q){
   const parts=q.parts||[q],available=parts.filter(p=>questionHints[key(p)]);
@@ -307,7 +309,7 @@ function savedPage(){
 }
 function render(){
   document.querySelectorAll('nav a').forEach(a=>{const active=a.dataset.route===state.route;a.classList.toggle('active',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
-  ({find:findPage,topics:topicsPage,papers:papersPage,guide:guidePage,saved:savedPage}[state.route]||findPage)();
+  ({find:findPage,topics:topicsPage,papers:papersPage,guide:guidePage,programs:()=>{main.innerHTML=programsPage();},saved:savedPage}[state.route]||findPage)();
   icons();updateCount();
 }
 function openPaper(q){
@@ -474,7 +476,7 @@ dialog.addEventListener('close',()=>{
   (lastFocus?.isConnected?lastFocus:document.querySelector('.question-start .primary, nav a'))?.focus();
 });
 dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
-window.addEventListener('hashchange',()=>{state.route=location.hash.slice(1)||'find';if(!['find','topics','papers','guide','saved'].includes(state.route))state.route='find';render();window.scrollTo(0,0);});
+window.addEventListener('hashchange',()=>{state.route=location.hash.slice(1)||'find';if(!['find','topics','papers','guide','programs','saved'].includes(state.route))state.route='find';render();window.scrollTo(0,0);});
 try{
   const response=await fetch('data.json');if(!response.ok)throw new Error('data unavailable');
   data=await response.json();
@@ -482,6 +484,6 @@ try{
   catch{extra={last:null,papers:{},hideOutside:false};}
   state.source=pool().find(q=>q.year===state.year&&q.q===state.q);
   state.selected=[...state.source.topics];state.route=location.hash.slice(1)||'find';
-  if(!['find','topics','papers','guide','saved'].includes(state.route))state.route='find';
+  if(!['find','topics','papers','guide','programs','saved'].includes(state.route))state.route='find';
   render();
 }catch(err){main.innerHTML=empty('題庫暫時未能載入','請確認網站服務已啟動，再重新載入。','<button class="primary" onclick="location.reload()">重新載入</button>');console.error(err);}
