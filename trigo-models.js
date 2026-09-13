@@ -43,7 +43,7 @@ export const trigoModels={
       ['正方形底邊 20 cm；直立角錐。','∠VAB = 72°；∠PBA = 60°；PQ ∥ BC。'],
       [['P','B','C','Q'],['A','B','C','D']],
       ['金色是切面 PBCQ，綠色是底面 ABCD；兩面沿 BC 相遇。','H 是 P 正下方的點。PH 是高度；PK 與 HK 都垂直 BC，所以 ∠PKH 才是兩面的交角。∠PBH 則是 PB 與底面的交角。'],
-      {aux:[['P','H'],['P','K'],['H','K'],['B','H']],extraPoints:['H','K'],measures:[['A','B','20 cm']],angles:[['V','A','B','72°'],['P','B','A','60°']],note:'V 保留作原角錐的參考；金色面是切面，不是另一個外加物件。'});
+      {cutFaces:[['A','B','C','D'],['A','B','P'],['P','B','C','Q'],['C','D','Q'],['D','A','P','Q']],cutHidden:['V'],aux:[['P','H'],['P','K'],['H','K'],['B','H']],extraPoints:['H','K'],measures:[['A','B','20 cm']],angles:[['V','A','B','72°'],['P','B','A','60°']],note:'「看整個模型」保留原角錐；「看關鍵平面」及「加上輔助線」顯示切走 VPBCQ 後留下的部分。'});
   },
   '2013:18':()=>{
     const C=acos(21/35),cm=21*sin(105-C)/sin(75),bm=21*sin(C)/sin(75),am=35-cm;
@@ -64,7 +64,7 @@ export const trigoModels={
       ['長方形底面：AB = 18 cm，BC = 10 cm。','VB = VC = 30 cm；∠VAB = ∠VDC = 110°。','P、Q、M、N 分別是 AB、CD、VB、VC 的中點。'],
       [['P','Q','N','M']],
       ['金色是切面 PQNM。轉一轉，看看這個梯形在角錐裡的位置。','H 在直線 PQ 上，MH ⟂ PQ。求梯形面積要用 MH，不是直接用斜邊 MP；H 可以落在 PQ 的延長線上。'],
-      {extraPoints:['H'],aux:[['M','H'],['P','H']],measures:[['A','B','18 cm'],['B','C','10 cm'],['V','B','30 cm']],angles:[['V','A','B','110°']],note:'保留原角錐作參考，金色面表示切割位置。'});
+      {cutFaces:[['A','P','Q','D'],['V','A','P','M'],['P','Q','N','M'],['V','N','Q','D'],['V','D','A'],['V','M','N']],cutHidden:['B','C'],extraPoints:['H'],aux:[['M','H'],['P','H']],measures:[['A','B','18 cm'],['B','C','10 cm'],['V','B','30 cm']],angles:[['V','A','B','110°']],note:'「看整個模型」保留原角錐；其餘兩步顯示切走 PBCQNM 後留下的部分，金色是露出的切面。'});
   },
   '2015:19':()=>{
     const ac=side(40,24,80),acb=acos((sq(ac)+576-1600)/(2*ac*24));
@@ -93,8 +93,8 @@ export const trigoModels={
     return lesson('懸起的金屬片：把 AC 延長到地面',p,[['A','B','C']],
       ['BC = 24 cm；∠BAC = 30°；∠ACB = 42°。','只有 B 在地面；AD = 10 cm，CE = 2 cm；D、E 是垂足。','AC 延長至 F，F 在地面。'],
       [['A','B','F'],['B','D','F']],
-      ['三角形 ABF 與金屬片在同一平面；BF 是這個平面與地面的交線。','H 在 BF 上，AH ⟂ BF。D 是 A 的地面投影，所以 DH 也垂直 BF；比較兩個面要看 ∠AHD。'],
-      {ground:true,extraPoints:['H'],aux:[['A','D'],['C','E'],['C','F'],['B','F'],['A','H'],['D','H']],measures:[['B','C','24 cm'],['A','D','10 cm'],['C','E','2 cm']],angles:[['B','A','C','30°'],['A','C','B','42°']]});
+      ['三角形 ABF 與金屬片在同一平面；BF 是這個平面與地面的交線。','把 FB 經 B 向外延長，才到垂足 H；AH ⟂ BF。D 是 A 的地面投影，所以 DH 也垂直 BF；比較兩個面要看 ∠AHD。'],
+      {ground:true,extraPoints:['H'],aux:[['A','D'],['C','E'],['C','F'],['B','F'],['B','H'],['A','H'],['D','H']],measures:[['B','C','24 cm'],['A','D','10 cm'],['C','E','2 cm']],angles:[['B','A','C','30°'],['A','C','B','42°']]});
   },
   '2018:17':()=>{
     const bd=60*sin(120)/sin(40),x=60*cos(20),y=60*sin(20);
@@ -176,12 +176,12 @@ export const trigoModels={
     if(dot(sub(d,a),v)<0)for(let i=0;i<3;i++)v[i]*=-1;
     const lift=p=>{const w=sub(p,a),y=dot(w,v);return [dot(w,u),y*cos(65),y*sin(65)];};
     const p={A:lift(a),B:lift(b),C:lift(c),D:lift(d)};
-    p.V=[p.D[0],p.D[1]-root(6400-sq(p.D[2])),0];groundFoot(p,'D','H');p.K=foot(p.D,p.A,p.B);
+    p.V=[p.D[0],p.D[1]+root(6400-sq(p.D[2])),0];groundFoot(p,'D','H');p.K=foot(p.D,p.A,p.B);
     return lesson('底面斜放的角錐：VAB 才在地面',p,pyramid(),
       ['AB = 90 cm；AD = 70 cm；CD = 100 cm。','∠ADC = 55°；∠BCD = 130°。','面 VAB 在地面；(b) VD = 80 cm，面 ABCD 與地面交角為 65°。'],
       [['A','B','C','D'],['V','A','B']],
-      ['金色 ABCD 雖然叫作角錐的「底」，卻不是水平地面。綠色 VAB 才在地面。','H 是 D 正下方的點；要找 VD 與地面的角，看 ∠DVH。K 在 AB 上，DK ⟂ AB；面與地面的 65° 可放在 ∠DKH。'],
-      {ground:true,extraPoints:['H','K'],aux:[['D','H'],['V','H'],['D','K'],['H','K']],measures:[['A','B','90 cm'],['A','D','70 cm'],['C','D','100 cm'],['V','D','80 cm']],angles:[['A','D','C','55°']],auxAngles:[['D','K','H','65°']],note:'題設沒有唯一決定 V 在地面的位置；這裡選一個符合 VD = 80 cm 的位置示範，並非加入新的已知條件。'});
+      ['A 是 AB 與 AD 相接的點；V 則連接 A、B、C、D，不能把兩點交換。金色 ABCD 是斜放的底，綠色 VAB 才在地面。','H 是 D 正下方的點；要找 VD 與地面的角，看 ∠DVH。把 BA 經 A 向外延長，才到垂足 K；DK ⟂ AB，面與地面的 65° 可放在 ∠DKH。'],
+      {ground:true,extraPoints:['H','K'],aux:[['D','H'],['V','H'],['D','K'],['A','K'],['H','K']],measures:[['A','B','90 cm'],['A','D','70 cm'],['C','D','100 cm'],['V','D','80 cm']],angles:[['A','D','C','55°']],auxAngles:[['D','K','H','65°']],note:'題設沒有唯一決定 V 在地面的位置；這裡選一個符合 VD = 80 cm、擺放方向接近原圖的位置示範，並非加入新的已知條件。'});
   },
   'PP:18':()=>{
     const ab=side(20,12,60),p=tetra(['A','B','C','D'],ab,20,12,20,12,14);

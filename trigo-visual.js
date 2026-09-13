@@ -1,7 +1,7 @@
 import {trigoModels,trigoKey,add,sub,mul,dot,length,unit,cross} from './trigo-models.js';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const radians=a=>a*Math.PI/180;
-export const orbitDefaults=key=>({azimuth:key==='2026:17'?145:35,elevation:24,mode:0,labels:false,expanded:false});
+export const orbitDefaults=key=>({azimuth:key==='2026:17'?25:35,elevation:key==='2017:19'?60:24,mode:0,labels:false,expanded:false});
 const modes=['看整個模型','看關鍵平面','加上輔助線'];
 function current(state,key){
   if(state.trigo?.key!==key)state.trigo={key,...orbitDefaults(key)};
@@ -36,13 +36,17 @@ export function trigoVisual(q,state={}){
 
 export function renderTrigo(model,s,width=320,height=340){
   const p=model.points,extras=new Set(model.extraPoints||[]);
-  const visible=Object.keys(p).filter(n=>s.mode===2||!extras.has(n));
+  const removed=new Set(s.mode?model.cutHidden||[]:[]);
+  const faces=s.mode&&model.cutFaces?model.cutFaces:model.faces;
+  const visible=Object.keys(p).filter(n=>!removed.has(n)&&(s.mode===2||!extras.has(n)));
   const all=Object.values(p),lo=[0,1,2].map(i=>Math.min(...all.map(p=>p[i]))),hi=[0,1,2].map(i=>Math.max(...all.map(p=>p[i])));
   const centre=mul(add(lo,hi),.5),radius=Math.max(...all.map(p=>length(sub(p,centre))));
   const a=radians(s.azimuth),e=radians(s.elevation);
   const camera=point=>{
     const [x,y,z]=sub(point,centre),horizontal=x*Math.cos(a)-y*Math.sin(a),depth=x*Math.sin(a)+y*Math.cos(a);
-    return [horizontal,depth*Math.sin(e)-z*Math.cos(e),depth*Math.cos(e)+z*Math.sin(e)];
+    // Screen y points down; positive elevation looks down from above the ground.
+    // Larger camera depth is nearer, matching the face painter and hidden-edge test.
+    return [horizontal,-depth*Math.sin(e)-z*Math.cos(e),-depth*Math.cos(e)+z*Math.sin(e)];
   };
   const bounds=visible.map(n=>camera(p[n]));
   const min=[0,1].map(i=>Math.min(...bounds.map(v=>v[i]))),max=[0,1].map(i=>Math.max(...bounds.map(v=>v[i])));
@@ -53,7 +57,7 @@ export function renderTrigo(model,s,width=320,height=340){
   const path=(a,b,cls)=>`<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" class="${cls}"/>`;
   const line=(a,b,cls)=>path(screen[a],screen[b],cls);
   const key=face=>[...face].sort().join(':');
-  const focus=model.focus.map(key),polys=model.faces.map(f=>({f,tone:s.mode?(focus.includes(key(f))?focus.indexOf(key(f))+1:0):0}));
+  const focus=model.focus.map(key),polys=faces.map(f=>({f,tone:s.mode?(focus.includes(key(f))?focus.indexOf(key(f))+1:0):0}));
   if(s.mode)for(const [i,f]of model.focus.entries())if(!polys.some(v=>key(v.f)===key(f)))polys.push({f,tone:i+1});
   const shapes=polys.map(({f,tone})=>({pts:f.map(n=>screen[n]),tone,f}));
   shapes.sort((a,b)=>a.pts.reduce((n,p)=>n+p[2],0)/a.pts.length-b.pts.reduce((n,p)=>n+p[2],0)/b.pts.length);
@@ -75,7 +79,7 @@ export function renderTrigo(model,s,width=320,height=340){
     const shade=Math.round(60+light*18);
     content+=`<polygon points="${pts.map(p=>p.slice(0,2).join(',')).join(' ')}" style="--face-shade:hsl(157 25% ${shade}%)" class="trigo-face trigo-tone-${tone}${s.mode?' is-focused':''}" data-face="${esc(f.join(''))}"/>`;
   }
-  const surfaces=model.faces.flatMap(f=>f.slice(1,-1).map((_,i)=>[screen[f[0]],screen[f[i+1]],screen[f[i+2]]]));
+  const surfaces=faces.flatMap(f=>f.slice(1,-1).map((_,i)=>[screen[f[0]],screen[f[i+1]],screen[f[i+2]]]));
   // Compare depth within projected face triangles; split edges at occlusion changes.
   const blocked=point=>surfaces.some(([a,b,c])=>{
     const det=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);
@@ -84,32 +88,46 @@ export function renderTrigo(model,s,width=320,height=340){
     const v=((c[1]-a[1])*(point[0]-c[0])+(a[0]-c[0])*(point[1]-c[1]))/det,w=1-u-v;
     return Math.min(u,v,w)>-1e-8&&u*a[2]+v*b[2]+w*c[2]>point[2]+radius*1e-6;
   });
+  const hiddenEdges=[],frontEdges=[];
   const edge=(a,b,cls)=>{
     const start=screen[a],delta=sub(screen[b],start);
-    let out='',from=0,hidden=blocked(add(start,mul(delta,.5/48)));
+    if(Math.hypot(delta[0],delta[1])<1e-6)return;
+    let from=0,hidden=blocked(add(start,mul(delta,.5/48)));
     for(let i=1;i<=48;i++){
       const next=i<48?blocked(add(start,mul(delta,(i+.5)/48))):!hidden;
-      if(next!==hidden){out+=path(add(start,mul(delta,from/48)),add(start,mul(delta,i/48)),hidden?'trigo-hidden':cls);from=i;hidden=next;}
+      if(next!==hidden){
+        const segment=path(add(start,mul(delta,from/48)),add(start,mul(delta,i/48)),hidden?'trigo-hidden':cls)
+          .replace('<line ',`<line data-edge="${esc(a+':'+b)}" `);
+        (hidden?hiddenEdges:frontEdges).push(segment);
+        from=i;hidden=next;
+      }
     }
-    return out;
   };
   const edges=new Map();
-  for(const f of model.faces)f.forEach((n,i)=>{const next=f[(i+1)%f.length];edges.set([n,next].sort().join(':'),[n,next]);});
-  for(const [a,b]of edges.values())content+=edge(a,b,'trigo-edge');
-  if(s.mode)for(const f of model.focus)f.forEach((n,i)=>{content+=edge(n,f[(i+1)%f.length],'trigo-focus-edge');});
+  const register=(f,cls)=>f.forEach((n,i)=>{
+    const pair=[n,f[(i+1)%f.length]].sort();
+    edges.set(pair.join(':'),{pair,cls});
+  });
+  for(const f of faces)register(f,'trigo-edge');
+  // Shared edges are drawn once, in a stable direction, so dashes cannot fill each other's gaps.
+  if(s.mode)for(const f of model.focus)register(f,'trigo-focus-edge');
+  for(const {pair,cls}of edges.values())edge(...pair,cls);
+  content+=hiddenEdges.join('')+frontEdges.join('');
   if(s.mode===2)for(const [a,b]of model.aux)content+=line(a,b,'trigo-aux');
   const labels=[];
   for(const n of visible){
     const [x,y]=screen[n];
-    content+=`<circle cx="${x}" cy="${y}" r="3" class="${extras.has(n)?'trigo-foot':'trigo-point'}"/>`;
+    content+=`<circle data-vertex="${esc(n)}" cx="${x}" cy="${y}" r="3" class="${extras.has(n)?'trigo-foot':'trigo-point'}"/>`;
     labels.push({text:n,x,y,vertex:true});
   }
   if(s.labels){
     for(const [a,b,text]of model.measures){
+      if(removed.has(a)||removed.has(b))continue;
       const mid=mul(add(p[a],p[b]),.5),[x,y]=project(mid);
       labels.push({text,x,y});
     }
     for(const [a,b,c,text]of [...model.angles,...(s.mode===2?model.auxAngles:[])]){
+      if([a,b,c].some(n=>removed.has(n)))continue;
       const u=unit(sub(p[a],p[b])),v=unit(sub(p[c],p[b])),angle=Math.acos(Math.max(-1,Math.min(1,dot(u,v))));
       const radiusArc=Math.min(length(sub(p[a],p[b])),length(sub(p[c],p[b])))*.19;
       const points=Array.from({length:17},(_,i)=>{
@@ -171,7 +189,7 @@ export function bindTrigoVisual(container,q,state){
     const f=model.focus[Number(b.dataset.trigoFace)],p=model.points;
     let n=unit(cross(sub(p[f[1]],p[f[0]]),sub(p[f[2]],p[f[0]])));
     if(n[2]<0)n=mul(n,-1);
-    s.azimuth=(Math.atan2(n[0],n[1])*180/Math.PI+360)%360;
+    s.azimuth=(Math.atan2(-n[0],-n[1])*180/Math.PI+360)%360;
     s.elevation=Math.asin(Math.max(-1,Math.min(1,n[2])))*180/Math.PI;
     root.querySelector('[data-trigo-mode="1"]').click();redraw();announce();
   }));
