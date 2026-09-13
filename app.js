@@ -5,6 +5,10 @@ import {plainSummary} from './plain-language.js';
 import {paperStatuses,validateBackup,mergeProgress} from './progress.js';
 import {programsPage} from './programs.js';
 import {programHintPanel} from './program-hints.js';
+import {similarityVisual,bindSimilarityVisual} from './similarity-visual.js';
+import {geometryVisual,bindGeometryVisual} from './geometry-visual.js';
+import {questionScene,bindQuestionScene} from './question-scenes.js';
+import {trigoVisual,bindTrigoVisual} from './trigo-visual.js';
 const main=document.querySelector('main'), dialog=document.querySelector('dialog');
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon=name=>`<i data-lucide="${name}"></i>`;
@@ -33,6 +37,28 @@ let state={route:'find',entry:'lookup',advanced:false,level:'whole',year:'2026',
   topicSection:'all',topicSearch:'',topicPage:1,topicDetail:null,guide:'foundation',savedFilter:'all',savedPage:1};
 let viewer=null, lastFocus=null;
 const icons=()=>window.lucide?.createIcons();
+function rememberSearch(){
+  try{
+    const {year,q,level,entry,section,pp,match,selected,advanced}=state;
+    sessionStorage.setItem('dse-search-v1',JSON.stringify({year,q,level,entry,section,pp,match,selected,advanced}));
+  }catch{/* Search restoration is optional when browser storage is unavailable. */}
+}
+function restoreSearch(){
+  try{
+    const saved=JSON.parse(sessionStorage.getItem('dse-search-v1')||'null');
+    if(!saved||!['whole','part'].includes(saved.level))return;
+    const source=(saved.level==='whole'?data.groups:data.questions).find(q=>q.year===saved.year&&q.q===saved.q);
+    if(!source)return;
+    Object.assign(state,{
+      year:source.year,q:source.q,level:saved.level,source,
+      entry:saved.entry==='foundation'?'foundation':'lookup',
+      section:['all','A1','A2','B'].includes(saved.section)?saved.section:'all',
+      match:['all','any','exact'].includes(saved.match)?saved.match:'all',
+      pp:saved.pp===true,advanced:saved.advanced===true,
+      selected:Array.isArray(saved.selected)&&saved.selected.every(t=>source.topics.includes(t))?[...new Set(saved.selected)]:[...source.topics]
+    });
+  }catch{/* Invalid search state must not prevent the question bank from loading. */}
+}
 function persist(){
   let beforeQuestions,beforeExtra;
   try{
@@ -170,6 +196,7 @@ function drawResults(){
   if(!target)return;
   const q=state.source;
   if(!q){target.innerHTML=empty('選一道題，開始操練','選擇卷一年份及題號。PP 為獨立練習卷。');return;}
+  rememberSearch();
   const results=matchingQuestions(pool(),q,{selected:state.selected,mode:state.match,section:state.section,pp:state.pp}).filter(q=>!extra.hideOutside||!outsideScope(q));
   const defaultTopics=q.topics.length===state.selected.length&&q.topics.every(t=>state.selected.includes(t));
   const defaultFilters=state.match==='all'&&state.section==='all'&&!state.pp&&defaultTopics;
@@ -313,10 +340,11 @@ function render(){
   icons();updateCount();
 }
 function openPaper(q){
+  viewer?.visual?.trigoCleanup?.();
   if(!q)return;
   extra.last={id:key(q),whole:Boolean(q.parts),time:Date.now()};persist();
   if(!dialog.open)lastFocus=document.activeElement;
-  viewer={q,page:q.page||1,zoom:1,reading:false,hints:{},stationOpen:false,method:null};
+  viewer={q,page:q.page||1,zoom:1,reading:false,hints:{},stationOpen:false,method:null,visual:{z:5,open:false}};
   drawViewer();
   if(!dialog.open)dialog.showModal();
   dialog.querySelector('[data-action="close"]')?.focus();
@@ -337,12 +365,16 @@ function drawViewer(){
   <div class="page-controls"><button class="icon-button" data-action="paper-page" data-value="${page-1}" ${page===1?'disabled':''} aria-label="原卷上一頁">${icon('chevron-left')}</button><select id="paper-page" aria-label="原卷頁數">${Array.from({length:paper.pages},(_,i)=>`<option value="${i+1}" ${page===i+1?'selected':''}>第 ${i+1} / ${paper.pages} 頁</option>`).join('')}</select><button class="icon-button" data-action="paper-page" data-value="${page+1}" ${page===paper.pages?'disabled':''} aria-label="原卷下一頁">${icon('chevron-right')}</button></div>
   ${!q.page?`<p class="note">${icon('info')}這份原卷尚未定位題號，請用頁數選單尋找 Q${esc(q.q)}。</p>`:`<p class="note">${icon('info')}已定位大題起始頁；題目可能延續至下一頁。</p>`}
   ${scopeNotice(q)}<section class="student-summary"><h3>這題要做甚麼？</h3><p class="detail-copy">${esc(summaryOf(q))}</p>${summaryHelp(q)}</section><div class="tags">${q.topics.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
-  ${hintsPanel(q)}${station(q.topics,'viewer',q)}
+  ${questionScene(q,viewer.visual)}${trigoVisual(q,viewer.visual)}${hintsPanel(q)}${similarityVisual(q,viewer.visual)}${geometryVisual(q,viewer.visual)}${station(q.topics,'viewer',q)}
   ${learningPanel(q)}
   <details class="legacy-completion"><summary>只記錄完成狀態</summary><button class="secondary" data-action="viewer-done">${icon(isDone(q)?'circle-check':'check')} ${isDone(q)?'已完成 · 改回待完成':'標記已完成'}</button></details>
   <button class="secondary" data-action="viewer-save">${icon('bookmark')} ${isSaved(q)?'取消收藏':'加入我的操練'}</button>
   <a class="secondary" href="${paper.url}#page=${page}" target="_blank" rel="noopener">${icon('external-link')}開啟原卷 PDF</a>
   <p class="hint">${esc(q.note||'分數為大題總分，不可當作每個分題或課題的獨立配分。')}<br>部分原卷含評分資料。</p></aside></div>`;
+  bindSimilarityVisual(dialog,viewer.visual);
+  bindGeometryVisual(dialog,q,viewer.visual);
+  bindQuestionScene(dialog,q,viewer.visual);
+  bindTrigoVisual(dialog,q,viewer.visual);
   icons();
 }
 function refreshCards(){if(state.route==='find')drawResults();else if(state.route==='saved')savedPage();else if(state.route==='topics')drawTopicExamples();icons();}
@@ -471,6 +503,7 @@ dialog.addEventListener('toggle',e=>{
 },true);
 document.addEventListener('input',e=>{if(e.target.id==='topic-search'){state.topicSearch=e.target.value;state.topicPage=1;drawChart();}});
 dialog.addEventListener('close',()=>{
+  viewer?.visual?.trigoCleanup?.();
   viewer=null;
   if(state.route==='find'){const old=document.querySelector('.resume-panel');if(old){old.outerHTML=resumePanel();icons();}}
   (lastFocus?.isConnected?lastFocus:document.querySelector('.question-start .primary, nav a'))?.focus();
@@ -483,7 +516,9 @@ try{
   try{extra=validateBackup({app:'dse-maths',version:1,questions:{},extra},data).extra;}
   catch{extra={last:null,papers:{},hideOutside:false};}
   state.source=pool().find(q=>q.year===state.year&&q.q===state.q);
-  state.selected=[...state.source.topics];state.route=location.hash.slice(1)||'find';
+  state.selected=[...state.source.topics];
+  restoreSearch();
+  state.route=location.hash.slice(1)||'find';
   if(!['find','topics','papers','guide','programs','saved'].includes(state.route))state.route='find';
   render();
 }catch(err){main.innerHTML=empty('題庫暫時未能載入','請確認網站服務已啟動，再重新載入。','<button class="primary" onclick="location.reload()">重新載入</button>');console.error(err);}
