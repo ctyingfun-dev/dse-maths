@@ -1,4 +1,5 @@
 import {matchingQuestions, normalizeQuestion} from './matching.js';
+import {markingSchemes} from './marking-schemes.js';
 import {techniques, questionHints, questionSubtopics, reviewedSummaries} from './techniques.js';
 import {formulaPanel, hintFormulaPanel} from './formulas.js';
 import {plainSummary} from './plain-language.js';
@@ -14,6 +15,11 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const icon=name=>`<i data-lucide="${name}"></i>`;
 const sectionName={A1:'甲一',A2:'甲二',B:'乙部'};
 const yearName=y=>y==='PP'?'PP 練習卷':`${y} DSE`;
+function markingLinks(year){
+  const scheme=markingSchemes[year];
+  if(!scheme)return '<p class="marking-note">評卷參考：尚未提供</p>';
+  return `<div class="marking-links"><div class="practice-actions"><a class="secondary" href="${esc(scheme.url)}#page=1" target="_blank" rel="noopener" aria-label="開啟 ${esc(yearName(year))} 卷一評卷參考">${icon('book-open-check')}${scheme.original?'中文答案及配分':'評卷參考原件'}</a><a class="icon-button" href="${esc(scheme.url)}" download="${esc(scheme.name)}" aria-label="下載 ${esc(yearName(year))} 卷一評卷參考" title="下載評卷參考">${icon('download')}</a>${scheme.original?`<a class="icon-button" href="${esc(scheme.original.url)}#page=1" target="_blank" rel="noopener" aria-label="查看 ${esc(yearName(year))} 未改動的評卷參考原件" title="查看完整原件">${icon('file-search')}</a>`:''}</div><p class="marking-note">${esc(scheme.note)} · ${scheme.pages} 頁</p></div>`;
+}
 const key=q=>`${q.year}:${q.q}`;
 const outsideScope=q=>q.topics?.some(t=>t==='極坐標'||t==='極座標')||q.parts?.some(outsideScope);
 function scopeNotice(q){
@@ -307,7 +313,7 @@ function guidePage(){
 }
 function paperProgressForm(year){
   const row=extra.papers[year]||{question:'',status:'working'};
-  return `<details class="paper-record" ${extra.papers[year]?'open':''}><summary>記錄／查看整卷進度</summary><form class="paper-progress" data-paper-record="${year}"><h3>我的整卷進度</h3><label class="field">做到哪一道大題？<select name="question"><option value="">尚未記錄題號</option>${data.groups.filter(q=>q.year===year).map(q=>`<option value="${esc(q.q)}" ${row.question===q.q?'selected':''}>Q${esc(q.q)}</option>`).join('')}</select></label><label class="field">現在的狀態<select name="status">${Object.entries(paperStatuses).map(([value,label])=>`<option value="${value}" ${row.status===value?'selected':''}>${label}</option>`).join('')}</select></label><button class="secondary" type="submit">儲存整卷進度</button><p class="paper-record-message" role="status">${extra.papers[year]?`已記錄：${row.question?'Q'+esc(row.question)+' · ':''}${paperStatuses[row.status]}`:'手動記錄，不會從 PDF 自動讀取進度。'}</p></form></details>`;
+  return `${markingLinks(year)}<details class="paper-record" ${extra.papers[year]?'open':''}><summary>記錄／查看整卷進度</summary><form class="paper-progress" data-paper-record="${year}"><h3>我的整卷進度</h3><label class="field">做到哪一道大題？<select name="question"><option value="">尚未記錄題號</option>${data.groups.filter(q=>q.year===year).map(q=>`<option value="${esc(q.q)}" ${row.question===q.q?'selected':''}>Q${esc(q.q)}</option>`).join('')}</select></label><label class="field">現在的狀態<select name="status">${Object.entries(paperStatuses).map(([value,label])=>`<option value="${value}" ${row.status===value?'selected':''}>${label}</option>`).join('')}</select></label><button class="secondary" type="submit">儲存整卷進度</button><p class="paper-record-message" role="status">${extra.papers[year]?`已記錄：${row.question?'Q'+esc(row.question)+' · ':''}${paperStatuses[row.status]}`:'手動記錄，不會從 PDF 自動讀取進度。'}</p></form></details>`;
 }
 function papersPage(){
   const years=Object.keys(data.papers).filter(year=>year!=='PP').sort(yearSort);
@@ -370,6 +376,7 @@ function drawViewer(){
   <details class="legacy-completion"><summary>只記錄完成狀態</summary><button class="secondary" data-action="viewer-done">${icon(isDone(q)?'circle-check':'check')} ${isDone(q)?'已完成 · 改回待完成':'標記已完成'}</button></details>
   <button class="secondary" data-action="viewer-save">${icon('bookmark')} ${isSaved(q)?'取消收藏':'加入我的操練'}</button>
   <a class="secondary" href="${paper.url}#page=${page}" target="_blank" rel="noopener">${icon('external-link')}開啟原卷 PDF</a>
+  ${markingLinks(q.year)}
   <p class="hint">${esc(q.note||'分數為大題總分，不可當作每個分題或課題的獨立配分。')}<br>部分原卷含評分資料。</p></aside></div>`;
   bindSimilarityVisual(dialog,viewer.visual);
   bindGeometryVisual(dialog,q,viewer.visual);
