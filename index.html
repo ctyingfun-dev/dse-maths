@@ -14,11 +14,17 @@
   <link rel="stylesheet" href="trigo-visual.css">
   <script src="vendor/lucide.js" defer></script>
   <script type="module" src="app.js"></script>
+  <style>
+    .paper-switch{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;margin:16px 8px 0;padding:8px 12px;border:1px solid #b8ccc6;border-radius:6px;color:#087d70;font-size:13px;font-weight:650;background:#fff}
+    .paper-switch:hover{background:#e9f5f1}.paper-switch svg{width:18px;height:18px}
+    @media(max-width:760px){.paper-switch{margin:12px 0 0}}
+  </style>
 </head>
 <body>
   <a class="skip" href="#main">跳至主要內容</a>
   <aside class="sidebar">
     <a class="brand" href="#find"><span class="brand-mark">m<span>+</span></span><span>DSE 數學<span class="brand-sub">研習室</span></span></a>
+    <a class="paper-switch" href="https://ctyingfun-dev.github.io/dse-maths-paper2/" aria-label="前往 Paper 2 卷二網站"><i data-lucide="arrow-right-left" aria-hidden="true"></i><span>Paper 2 · 卷二</span></a>
     <div class="nav-caption">你的溫習空間</div>
     <nav aria-label="主要導覽">
       <a href="#find" data-route="find"><i data-lucide="scan-search"></i><span>同類題搜尋</span></a>
